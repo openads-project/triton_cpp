@@ -43,7 +43,7 @@ ROS2 Jazzy:
   variables:
     ROS_DISTRO: jazzy
     IMAGE_AMD64: 'rwthika/ros2-triton:jazzy'
-    IMAGE_ARM64: 'rwthika/ros2-triton:jazzy-desktop-full-triton2.48.0'
+    DISABLE_ARCH_ARM64: 'true'
 
 # === Downstream ===============================================================
 
