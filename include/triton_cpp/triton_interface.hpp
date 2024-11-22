@@ -106,7 +106,7 @@ class TritonInterface {
    * The result object will be stored in a shared pointer, which will be valid until the next call to this function.
    * 
    */
-  void operator()() {
+  void infer() {
     triton::client::InferResult* raw_results{nullptr};
     auto status = triton_client_->Infer(&raw_results, options_, raw_inputs_, raw_outputs_);
     if (!status.IsOk()) {

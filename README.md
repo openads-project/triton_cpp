@@ -9,29 +9,14 @@ This package is a header-only wrapper around the [official Triton C++ client lib
 
 Current workflow:
 
-1. Install the triton client libraries on your machine or in your docker container, e.g. using the following script, assuming Ubuntu 22.04:
-    ```bash
-    # install triton client lib
-    TRITON_CLIENT_DIR="/opt/triton"
-    mkdir -p $TRITON_CLIENT_DIR
-    wget -O  $TRITON_CLIENT_DIR/clients.tgz https://github.com/triton-inference-server/server/releases/download/v2.48.0/v2.48.0_ubuntu2204.clients.tar.gz && \
-        tar -C $TRITON_CLIENT_DIR -xzf $TRITON_CLIENT_DIR/clients.tgz && \
-        rm $TRITON_CLIENT_DIR/clients.tgz
-    echo "export TRITON_CLIENT_DIR=$TRITON_CLIENT_DIR" >> /root/.bashrc
-    echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$TRITON_CLIENT_DIR/lib" >> /root/.bashrc
-    ```
+1. Use one of the [rwthika/ros2-triton](https://hub.docker.com/r/rwthika/ros2-triton/) images as base image
 
-1. Clone this repo into your ROS 2 workspace, or add it to the .repos file
-    ```
-    cd src/upstream
-    git clone https://gitlab.ika.rwth-aachen.de/fb-fi/<TBD>/triton_cpp.git
-    ```
-    or
+1. Add this repo to the .repos file
     ```yml
     repositories:
       triton_cpp:
         type: git
-        url: https://gitlab.ika.rwth-aachen.de/fb-fi/<TBD>/triton_cpp.git
+        url: https://gitlab.ika.rwth-aachen.de/fb-fi/ml/triton_cpp.git
         version: main
     ```
 
@@ -41,7 +26,7 @@ Current workflow:
     ```
     and
     ```cmake
-    list(APPEND CMAKE_PREFIX_PATH "../triton_cpp/cmake") # Current hack needed because the official Triton Lib doesn't export a config.cmake
+    list(APPEND CMAKE_PREFIX_PATH "../../upstream/triton_cpp/cmake") # Current hack needed because the official Triton Lib doesn't export a config.cmake
     find_package(triton_cpp REQUIRED)
     ament_target_dependencies(
       ${TARGET_NAME}
@@ -89,7 +74,7 @@ auto points_xyz_map = ti->getInputTensor<float>("points_xyz", 200000, 3);
 points_xyz_map(0,0) = 3.5; //...
 
 // Infer
-*ti();
+ti->infer();
 
 // Get the results. The types and shapes work exactly as for input
 auto class_logits = ti->getOutputTensor<float>("class_logits", 65536, 3);
