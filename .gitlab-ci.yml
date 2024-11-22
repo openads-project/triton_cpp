@@ -16,7 +16,7 @@ ROS2 Humble:
   variables:
     ROS_DISTRO: humble
     IMAGE_AMD64: 'rwthika/ros2-triton:humble'
-    IMAGE_ARM64: 'rwthika/ros2-triton:humble'
+    IMAGE_ARM64: 'rwthika/ros2-triton:humble-desktop-full-triton2.48.0'
 
 
 ROS2 Iron:
@@ -30,7 +30,7 @@ ROS2 Iron:
   variables:
     ROS_DISTRO: iron
     IMAGE_AMD64: 'rwthika/ros2-triton:iron'
-    IMAGE_ARM64: 'rwthika/ros2-triton:iron'
+    IMAGE_ARM64: 'rwthika/ros2-triton:iron-desktop-full-triton2.48.0'
 
 ROS2 Jazzy:
   stage: Industrial CI
@@ -43,7 +43,7 @@ ROS2 Jazzy:
   variables:
     ROS_DISTRO: jazzy
     IMAGE_AMD64: 'rwthika/ros2-triton:jazzy'
-    IMAGE_ARM64: 'rwthika/ros2-triton:jazzy'
+    IMAGE_ARM64: 'rwthika/ros2-triton:jazzy-desktop-full-triton2.48.0'
 
 # === Downstream ===============================================================
 
