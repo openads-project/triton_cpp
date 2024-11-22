@@ -4,7 +4,7 @@ find_package(Eigen3 REQUIRED)
 if(DEFINED ENV{TRITON_CLIENT_DIR})
     set(TRITON_CLIENT_DIR $ENV{TRITON_CLIENT_DIR})
 else()
-    set(TRITON_CLIENT_DIR /opt/triton)
+    set(TRITON_CLIENT_DIR /opt/tritonclient)
 endif()
 
 # find include directories
