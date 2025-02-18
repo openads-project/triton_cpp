@@ -32,11 +32,10 @@ class TritonInterface {
    * @param model_version Version of the model to use
    * @param server_url URL of the Triton server
    * @param shm Whether to use shared memory for communication with the server
-   * @param add_batch_dim Whether to add a batch dimension to the input tensors. SavedModels seem to need this, ONNX don't.
    * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
    */
   TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
-                  bool shm, bool add_batch_dim = true, bool variable_input_size = false)
+                  bool shm, bool variable_input_size = false)
       : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size} {
     if (shm && variable_input_size) {
       throw std::invalid_argument("Variable input size and shared memory cannot be combined");
@@ -50,7 +49,7 @@ class TritonInterface {
       throw std::runtime_error("Failed to get model config from Triton server: " + err.Message());
     }
 
-    std::tie(input_metadata_, output_metadata_) = build_model_info(model_config, add_batch_dim);
+    std::tie(input_metadata_, output_metadata_) = build_model_info(model_config);
   }
 
   // Rule of 5: Disable copy and move operations
@@ -351,14 +350,14 @@ class TritonInterface {
 
  private:
   std::pair<std::map<std::string, InputOutputMetaData>, std::map<std::string, InputOutputMetaData>> build_model_info(
-      const inference::ModelConfigResponse& model_config, bool add_batch_dim) {
+      const inference::ModelConfigResponse& model_config) {
     std::pair<std::map<std::string, InputOutputMetaData>, std::map<std::string, InputOutputMetaData>> metadata;
     std::stringstream model_info_builder;
     int n_inputs = model_config.config().input_size();
     for (int i{0}; i < n_inputs; ++i) {
       auto input = model_config.config().input(i);
       std::vector<int64_t> shape{};
-      if (add_batch_dim) {
+      if (model_config.config().max_batch_size() != 0) {
         shape.push_back(1);  // start with batch dimension. Triton deliberately does not output this, but
                              // requires it to be configured in the InferInput
       }
@@ -369,7 +368,8 @@ class TritonInterface {
       metadata.first.emplace(input.name(), InputOutputMetaData{shape, input.data_type()});
       model_info_builder << "input name: " << input.name() << '\n';
       model_info_builder << "input datatype: " << inference::DataType_Name(input.data_type()) << '\n';
-      model_info_builder << "input dims: " << (input.dims_size() + add_batch_dim) << ", shape: " << shape << "\n\n";
+      model_info_builder << "input dims: " << (input.dims_size() + (model_config.config().max_batch_size() != 0))
+                         << ", shape: " << shape << "\n\n";
     }
     model_info_builder << "-------------------\n";
 
