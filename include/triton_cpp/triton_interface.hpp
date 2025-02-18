@@ -33,10 +33,14 @@ class TritonInterface {
    * @param server_url URL of the Triton server
    * @param shm Whether to use shared memory for communication with the server
    * @param add_batch_dim Whether to add a batch dimension to the input tensors. SavedModels seem to need this, ONNX don't.
+   * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
    */
   TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
-                  bool shm, bool add_batch_dim = true)
-      : options_{model_name}, shm_{shm} {
+                  bool shm, bool add_batch_dim = true, bool variable_input_size = false)
+      : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size} {
+    if (shm && variable_input_size) {
+      throw std::invalid_argument("Variable input size and shared memory cannot be combined");
+    }
     options_.model_version_ = model_version;
     options_.client_timeout_ = 0;
     triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
@@ -65,10 +69,23 @@ class TritonInterface {
    * @brief Creates all input and output buffers for the model, based on the model metadata
    * 
    * @param special_output_shapes Some models don't know their output shape, i.e. it is given as -1. In this case, you must provide the correct shape here.
+   * @param special_input_shapes Some models don't know their input shape, i.e. it is given as -1. In this case, you must provide the correct shape here.
    */
-  void initInOutputs(std::optional<std::map<std::string, std::vector<int64_t>>> special_output_shapes) {
+  void initInOutputs(std::optional<std::map<std::string, std::vector<int64_t>>> special_output_shapes,
+                     std::optional<std::map<std::string, std::vector<int64_t>>> special_input_shapes = std::nullopt) {
     inputs_.clear();
     outputs_.clear();
+    if (special_input_shapes.has_value()) {
+      for (const auto& [name, shape] : special_input_shapes.value()) {
+        auto it = input_metadata_.find(name);
+        if (it == input_metadata_.end()) {
+          throw std::invalid_argument("Input name not found in model metadata: " + name);
+        }
+        input_metadata_.erase(it);
+        input_metadata_.emplace(name, InputOutputMetaData{shape, it->second.datatype});
+      }
+    }
+
     if (special_output_shapes.has_value()) {
       for (const auto& [name, shape] : special_output_shapes.value()) {
         auto it = output_metadata_.find(name);
@@ -85,15 +102,19 @@ class TritonInterface {
       setup_shm_inputs(input_metadata_);
       setup_shm_outputs(output_metadata_);
     } else {
-      setup_standard_inputs(input_metadata_);
+      if (!variable_input_size_) {
+        setup_standard_inputs(input_metadata_);
+      }
       setup_standard_outputs(output_metadata_);
     }
 
     // Also store the raw pointers to in/outputs in vectors, as required by the Triton client
     // We don't have to delete these anywhere, as they are managed by the respective shared pointers
-    raw_inputs_.clear();
-    for (const auto& input : inputs_) {
-      raw_inputs_.push_back(input.second.input.get());
+    if (!variable_input_size_) {
+      raw_inputs_.clear();
+      for (const auto& input : inputs_) {
+        raw_inputs_.push_back(input.second.input.get());
+      }
     }
 
     raw_outputs_.clear();
@@ -109,6 +130,12 @@ class TritonInterface {
    * 
    */
   void infer() {
+    if (variable_input_size_) {
+      raw_inputs_.clear();
+      for (const auto& input : inputs_) {
+        raw_inputs_.push_back(input.second.input.get());
+      }
+    }
     triton::client::InferResult* raw_results{nullptr};
     auto status = triton_client_->Infer(&raw_results, options_, raw_inputs_, raw_outputs_);
     if (!status.IsOk()) {
@@ -128,6 +155,9 @@ class TritonInterface {
    */
   template <typename T>
   VectorType<T> getInputTensor(const std::string& name, int64_t rows) {
+    if (variable_input_size_) {
+      CreateInputTensor(name, rows);
+    }
     auto& input = inputs_[name];
     if (rows * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
@@ -150,6 +180,9 @@ class TritonInterface {
    */
   template <typename T>
   MatrixType<T> getInputTensor(const std::string& name, int64_t rows, int64_t cols) {
+    if (variable_input_size_) {
+      CreateInputTensor(name, rows, cols);
+    }
     auto& input = inputs_[name];
     if (rows * cols * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
@@ -175,6 +208,9 @@ class TritonInterface {
   template <typename T, typename... DimType>
   TensorType<T, sizeof...(DimType) + 3> getInputTensor(const std::string& name, int64_t dim0, int64_t dim1,
                                                        int64_t dim2, DimType... dims) {
+    if (variable_input_size_) {
+      CreateInputTensor(name, dim0, dim1, dim2, dims...);
+    }
     auto& input = inputs_[name];
     if (((dim0 * dim1 * dim2) * ... * dims) * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
@@ -194,6 +230,9 @@ class TritonInterface {
    * @return std::vector<uint8_t>& raw buffer
    */
   std::pair<uint8_t*, std::size_t> getInputTensor(const std::string& name) {
+    if (variable_input_size_) {
+      throw(std::invalid_argument("Variable input size is enabled, but no size was provided for input " + name));
+    }
     auto& input = inputs_[name];
     return {input.data_raw, input.data_raw_size};
   }
@@ -351,6 +390,21 @@ class TritonInterface {
     return metadata;
   }
 
+  template <typename... DimType>
+  void CreateInputTensor(const std::string& name, DimType... dims) {
+    if (input_metadata_.find(name) == input_metadata_.end()) {
+      throw std::invalid_argument("No input named " + name + " is known.");
+    }
+    auto& meta = input_metadata_.at(name);
+    InputOutputMetaData modified_meta = InputOutputMetaData{std::vector<int64_t>{dims...}, meta.datatype};
+    triton::client::InferInput* input_ptr{nullptr};
+    triton::client::InferInput::Create(&input_ptr, name, std::vector<int64_t>{dims...},
+                                       inference::DataType_Name(modified_meta.datatype).substr(5));
+    inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr),
+                     std::vector<uint8_t>(modified_meta.bytesize, 0)};
+    inputs_[name].input->AppendRaw(inputs_[name].data.data(), inputs_[name].data.size());
+  }
+
   void setup_standard_inputs(const std::map<std::string, InputOutputMetaData>& metadata) {
     for (const auto& [name, meta] : metadata) {
       triton::client::InferInput* input_ptr{nullptr};
@@ -412,6 +466,7 @@ class TritonInterface {
 
   triton::client::InferOptions options_;  // Options for communication with the server
   bool shm_;                              // Whether to use shared memory
+  bool variable_input_size_;              // Whether the input size is variable
   std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;  // Raw triton client
   std::map<std::string, InputOutputMetaData> input_metadata_;                 // Metadata for inputs
   std::map<std::string, InputOutputMetaData> output_metadata_;                // Metadata for outputs
