@@ -479,10 +479,11 @@ class TritonInterface {
   std::vector<triton::client::InferInput*> raw_inputs_;   // Raw pointers to inputs
   std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;  // Raw pointers to outputs
 
+  const std::string RANDOM_INSTANCE_STRING = randstring(10);
   const std::string INPUT_SHM_NAME = "input_data";
-  const std::string INPUT_SHM_KEY = "/input_simple";
+  const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;
   const std::string OUTPUT_SHM_NAME = "output_data";
-  const std::string OUTPUT_SHM_KEY = "/output_simple";
+  const std::string OUTPUT_SHM_KEY = "/triton_cpp_output_" + RANDOM_INSTANCE_STRING;
 };
 
 }  // namespace triton_cpp

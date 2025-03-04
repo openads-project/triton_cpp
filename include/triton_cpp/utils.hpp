@@ -1,7 +1,13 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <iostream>
+#include <random>
+#include <string>
 #include <vector>
 
 #include <common.h>
@@ -46,6 +52,19 @@ inline void fail_on_error(const triton::client::Error& err, std::string message 
   if (!err.IsOk()) {
     throw std::runtime_error(message + ": " + err.Message());
   }
+}
+
+inline std::string randstring(std::size_t len) {
+  static constexpr auto chars =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+  thread_local static std::mt19937 rng{std::random_device{}()};
+  thread_local static std::uniform_int_distribution<std::string::size_type> dist(0, std::strlen(chars) - 1);
+
+  std::string result(len, '\0');
+  std::generate_n(begin(result), len, [&]() { return chars[dist(rng)]; });
+  return result;
 }
 
 }  // namespace triton_cpp
