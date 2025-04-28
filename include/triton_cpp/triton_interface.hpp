@@ -35,16 +35,30 @@ class TritonInterface {
    * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
    */
   TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
-                  bool shm, bool variable_input_size = false)
+                  bool shm, bool variable_input_size = false, bool retry_connection = false)
       : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size} {
     if (shm && variable_input_size) {
       throw std::invalid_argument("Variable input size and shared memory cannot be combined");
     }
     options_.model_version_ = model_version;
     options_.client_timeout_ = 0;
-    triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
+    triton::client::Error err;
+    err = triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
+    while(retry_connection && !err.IsOk()) {
+      std::cerr << "Failed to create Triton client: " << err.Message() << ". Retrying..." << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      err = triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
+    }
+    if (!err.IsOk()) {
+      throw std::runtime_error("Failed to create Triton client: " + err.Message());
+    }
     inference::ModelConfigResponse model_config;
-    auto err = triton_client_->ModelConfig(&model_config, model_name, model_version);
+    err = triton_client_->ModelConfig(&model_config, model_name, model_version);
+    while(retry_connection && !err.IsOk()) {
+      std::cerr << "Failed to get model config from Triton server: " << err.Message() << ". Retrying..." << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      err = triton_client_->ModelConfig(&model_config, model_name, model_version);
+    }
     if (!err.IsOk()) {
       throw std::runtime_error("Failed to get model config from Triton server: " + err.Message());
     }
