@@ -362,6 +362,36 @@ class TritonInterface {
    */
   std::size_t nOutputs() const { return output_metadata_.size(); }
 
+  /**
+   * @brief Get the Input Shape of a tensor
+   * 
+   * @param name name of the input tensor
+   * @return std::vector<int64_t> shape of  the input tensor
+   * @throws std::invalid_argument if the input name is not found in the model metadata
+   */
+  std::vector<int64_t> getInputShape(const std::string& name) const {
+    auto it = input_metadata_.find(name);
+    if (it == input_metadata_.end()) {
+      throw std::invalid_argument("Input name not found in model metadata: " + name);
+    }
+    return it->second.shape;
+  }
+
+  /**
+   * @brief Get the Output Shape of a tensor
+   * 
+   * @param name name of the output tensor
+   * @return std::vector<int64_t> shape of the output tensor
+   * @throws std::invalid_argument if the output name is not found in the model metadata
+   */
+  std::vector<int64_t> getOutputShape(const std::string& name) const {
+    auto it = output_metadata_.find(name);
+    if (it == output_metadata_.end()) {
+      throw std::invalid_argument("Output name not found in model metadata: " + name);
+    }
+    return it->second.shape;
+  }
+
  private:
   std::pair<std::map<std::string, InputOutputMetaData>, std::map<std::string, InputOutputMetaData>> build_model_info(
       const inference::ModelConfigResponse& model_config) {

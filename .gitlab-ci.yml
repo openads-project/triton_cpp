@@ -18,20 +18,6 @@ ROS2 Humble:
     IMAGE_AMD64: 'rwthika/ros2-triton:humble'
     IMAGE_ARM64: 'rwthika/ros2-triton:humble'
 
-
-ROS2 Iron:
-  stage: Industrial CI
-  trigger:
-    include:
-      - project: fb-fi/ops/templates/ci-templates
-        ref: main
-        file: .industrial_ci.template.yml
-    strategy: depend
-  variables:
-    ROS_DISTRO: iron
-    IMAGE_AMD64: 'rwthika/ros2-triton:iron'
-    IMAGE_ARM64: 'rwthika/ros2-triton:iron'
-
 ROS2 Jazzy:
   stage: Industrial CI
   trigger:
