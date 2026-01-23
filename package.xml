@@ -2,8 +2,8 @@
 <package format="3">
 
   <name>triton_cpp</name>
-  <version>1.0.6</version>
-  <description>Wrappers around the TensorFlow C++ API for easy usage in ROS</description>
+  <version>1.0.0</version>
+  <description>Header-only wrapper around the NVIDIA Triton C++ API</description>
 
   <maintainer email="lennart.reiher@rwth-aachen.de">Lennart Reiher</maintainer>
 
