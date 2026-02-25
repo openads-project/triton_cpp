@@ -43,7 +43,8 @@ Current workflow:
 #include <iostream>
 
 // Connect to the server
-std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
 
 // Query for model info (input & output names, shapes, and datatypes) as human-readable string
 std::cout << ti->getModelInfo() << std::endl;
@@ -85,6 +86,22 @@ std::cout << class_logits(0,0);
 // is currently not supported!
 ```
 
+### Inference timeout
+
+`TritonInterface` supports an optional client-side inference timeout via the constructor argument
+`client_timeout_s`:
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, false, 2.0);
+```
+
+- Unit: seconds
+- `client_timeout_s == 0.0`: timeout disabled
+- `client_timeout_s > 0.0`: failed/blocked inference requests return with an error after the timeout
+- `client_timeout_s < 0.0`: invalid (throws)
+
 ### Use shared memory
 
 triton_cpp provides the input and output as serialized Protobuf stream to the server per default.
@@ -104,11 +121,13 @@ If the server and client run on the same machine, using shared memory is much mo
 
 1. Now in the code, change
     ```c++
-    std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
+    std::unique_ptr<triton_cpp::TritonInterface> ti =
+        std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
     ```
     to
     ```c++
-    std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", true);
+    std::unique_ptr<triton_cpp::TritonInterface> ti =
+        std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", true);
     ```
     and you're done.
 
