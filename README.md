@@ -145,7 +145,7 @@ If the server and client run on the same machine, using shared memory is much mo
 
 By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
 
-Set `variable_input_size = true` when the number of elements in an input tensor changes between calls (e.g. a variable-length environment model representation, as seen in https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/planning/behavior_planning). In this mode the Triton client reallocates the input memory on every `infer()` call, so there is a small per-call overhead.
+Set `variable_input_size = true` when the number of elements in an input tensor changes between calls (e.g. a variable-length environment model representation, as seen in [behavior-planning](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/planning/behavior_planning)). In this mode the Triton client reallocates the input memory on every `infer()` call, so there is a small per-call overhead.
 
 ```c++
 std::unique_ptr<triton_cpp::TritonInterface> ti =
