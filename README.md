@@ -43,7 +43,8 @@ Current workflow:
 #include <iostream>
 
 // Connect to the server
-std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
 
 // Query for model info (input & output names, shapes, and datatypes) as human-readable string
 std::cout << ti->getModelInfo() << std::endl;
@@ -85,6 +86,30 @@ std::cout << class_logits(0,0);
 // is currently not supported!
 ```
 
+### Constructor parameters
+
+The full constructor signature is:
+
+```c++
+TritonInterface(const std::string& model_name,
+                const std::string& model_version,
+                const std::string& server_url,
+                bool shm,
+                bool variable_input_size = false,
+                bool retry_connection   = false,
+                double client_timeout_s = 0.0)
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `model_name` | `string` | — | Name of the model to load from the Triton server |
+| `model_version` | `string` | — | Version of the model (e.g. `"1"`) |
+| `server_url` | `string` | — | gRPC URL of the Triton server (e.g. `"127.0.0.1:8001"`) |
+| `shm` | `bool` | — | Use shared memory for zero-copy data transfer (see [Use shared memory](#use-shared-memory)) |
+| `variable_input_size` | `bool` | `false` | Allow input shapes to change between inference calls (see [Variable input size](#variable-input-size)) |
+| `retry_connection` | `bool` | `false` | Retry connecting to the server until it becomes available (see [Retry connection](#retry-connection)) |
+| `client_timeout_s` | `double` | `0.0` | Client-side inference timeout in seconds; `0.0` disables it (see [Inference timeout](#inference-timeout)) |
+
 ### Use shared memory
 
 triton_cpp provides the input and output as serialized Protobuf stream to the server per default.
@@ -104,15 +129,59 @@ If the server and client run on the same machine, using shared memory is much mo
 
 1. Now in the code, change
     ```c++
-    std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
+    std::unique_ptr<triton_cpp::TritonInterface> ti =
+        std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", false);
     ```
     to
     ```c++
-    std::unique_ptr<triton_cpp::TritonInterface> ti = std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", true);
+    std::unique_ptr<triton_cpp::TritonInterface> ti =
+        std::make_unique<triton_cpp::TritonInterface>("PBOD", "1", "127.0.0.1:8001", true);
     ```
     and you're done.
 
 1. To test wether SHM is working as expected, go to `/dev/shm` in both containers and observe, while inference is running, if files with data buffers are created there.
+
+### Variable input size
+
+By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
+
+Set `variable_input_size = true` when the number of elements in an input tensor changes between calls (e.g. a variable-length environment model representation, as seen in [behavior-planning](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/planning/behavior_planning)). In this mode the Triton client reallocates the input memory on every `infer()` call, so there is a small per-call overhead.
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "behavior-planning", "1", "127.0.0.1:8001", false, true);
+```
+
+> **Note:** `variable_input_size = true` and `shm = true` cannot be combined and will throw `std::invalid_argument`.
+
+### Retry connection
+
+By default (`retry_connection = false`) the constructor throws `std::runtime_error` immediately if it cannot reach the server or fetch the model configuration.
+
+Set `retry_connection = true` to have the constructor keep retrying (with a 1-second delay between attempts) until the server is reachable and the model is loaded. This is useful when the client node may start before the Triton server is fully ready (e.g. inside a Docker Compose stack).
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, true);
+```
+
+### Inference timeout
+
+`TritonInterface` supports an optional client-side inference timeout via the constructor argument
+`client_timeout_s`:
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, false, 2.0);
+```
+
+- Unit: seconds
+- `client_timeout_s == 0.0`: timeout disabled
+- `client_timeout_s > 0.0`: failed/blocked inference requests return with an error after the timeout
+- `client_timeout_s < 0.0`: invalid (throws)
 
 ### Documentation
 

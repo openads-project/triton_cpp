@@ -35,16 +35,20 @@ class TritonInterface {
    * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
    */
   TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
-                  bool shm, bool variable_input_size = false, bool retry_connection = false)
+                  bool shm, bool variable_input_size = false, bool retry_connection = false,
+                  double client_timeout_s = 0.0)
       : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size} {
     if (shm && variable_input_size) {
       throw std::invalid_argument("Variable input size and shared memory cannot be combined");
     }
     options_.model_version_ = model_version;
-    options_.client_timeout_ = 0;
+    if (client_timeout_s < 0.0) {
+      throw std::invalid_argument("client_timeout_s must be >= 0.0");
+    }
+    options_.client_timeout_ = static_cast<decltype(options_.client_timeout_)>(client_timeout_s * 1e6);
     triton::client::Error err;
     err = triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
-    while(retry_connection && !err.IsOk()) {
+    while (retry_connection && !err.IsOk()) {
       std::cerr << "Failed to create Triton client: " << err.Message() << ". Retrying..." << std::endl;
       std::this_thread::sleep_for(std::chrono::seconds(1));
       err = triton::client::InferenceServerGrpcClient::Create(&triton_client_, server_url, false);
@@ -54,7 +58,7 @@ class TritonInterface {
     }
     inference::ModelConfigResponse model_config;
     err = triton_client_->ModelConfig(&model_config, model_name, model_version);
-    while(retry_connection && !err.IsOk()) {
+    while (retry_connection && !err.IsOk()) {
       std::cerr << "Failed to get model config from Triton server: " << err.Message() << ". Retrying..." << std::endl;
       std::this_thread::sleep_for(std::chrono::seconds(1));
       err = triton_client_->ModelConfig(&model_config, model_name, model_version);
