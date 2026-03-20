@@ -98,9 +98,7 @@ class TritonInterface {
         if (it == input_metadata_.end()) {
           throw std::invalid_argument("Input name not found in model metadata: " + name);
         }
-        const auto datatype = it->second.datatype;
-        input_metadata_.erase(it);
-        input_metadata_.emplace(name, InputOutputMetaData{shape, datatype});
+        it->second = InputOutputMetaData{shape, it->second.datatype};
       }
     }
 
@@ -110,9 +108,7 @@ class TritonInterface {
         if (it == output_metadata_.end()) {
           throw std::invalid_argument("Output name not found in model metadata: " + name);
         }
-        const auto datatype = it->second.datatype;
-        output_metadata_.erase(it);
-        output_metadata_.emplace(name, InputOutputMetaData{shape, datatype});
+        it->second = InputOutputMetaData{shape, it->second.datatype};
       }
     }
     if (shm_) {
