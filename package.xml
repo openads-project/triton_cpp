@@ -2,7 +2,7 @@
 <package format="3">
 
   <name>triton_cpp</name>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <description>Header-only wrapper around the NVIDIA Triton C++ API</description>
 
   <maintainer email="lennart.reiher@rwth-aachen.de">Lennart Reiher</maintainer>
@@ -15,17 +15,10 @@
   <author email="bastian.lampe@rwth-aachen.de">Bastian Lampe</author>
   <author email="raphael.vankempen@ika.rwth-aachen.de">Raphael van Kempen</author>
 
-  <build_depend>ros_environment</build_depend>
-
-  <!-- ROS2 -->
-  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
-
-  <!-- ROS1 -->
-  <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
   <export>
-    <build_type condition="$ROS_VERSION == 1">catkin</build_type>
-    <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
   
 </package>
