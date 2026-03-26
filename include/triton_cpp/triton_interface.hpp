@@ -6,12 +6,17 @@
 #include <Eigen/Dense>
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM) && !defined(TRITON_ENABLE_GPU)
+#define TRITON_ENABLE_GPU
+#endif
+
 #include <common.h>
 #include <grpc_client.h>
 #include <grpc_service.pb.h>
 #include <ipc.h>
 #include <model_config.pb.h>
 
+#include "triton_cpp/cuda_shm.hpp"
 #include "triton_cpp/shm.hpp"
 #include "triton_cpp/shm_utils.hpp"
 #include "triton_cpp/types.hpp"
@@ -36,9 +41,12 @@ class TritonInterface {
    */
   TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
                   bool shm, bool variable_input_size = false, bool retry_connection = false,
-                  double client_timeout_s = 0.0)
-      : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size} {
-    if (shm && variable_input_size) {
+                  double client_timeout_s = 0.0, bool cuda_input_shm = false)
+      : options_{model_name},
+        shm_{shm},
+        variable_input_size_{variable_input_size},
+        cuda_input_shm_requested_{cuda_input_shm} {
+    if ((shm || cuda_input_shm) && variable_input_size) {
       throw std::invalid_argument("Variable input size and shared memory cannot be combined");
     }
     options_.model_version_ = model_version;
@@ -68,6 +76,35 @@ class TritonInterface {
     }
 
     std::tie(input_metadata_, output_metadata_) = build_model_info(model_config);
+
+    if (cuda_input_shm_requested_) {
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM)
+      inference::ServerMetadataResponse server_metadata;
+      const auto metadata_status = triton_client_->ServerMetadata(&server_metadata);
+      if (!metadata_status.IsOk()) {
+        std::cerr << "Failed to query Triton server metadata for CUDA SHM support: " << metadata_status.Message()
+                  << ". Falling back to non-CUDA input transport." << std::endl;
+      } else {
+        const bool server_supports_cuda_shm =
+            std::find(server_metadata.extensions().begin(), server_metadata.extensions().end(), "cuda_shared_memory") !=
+            server_metadata.extensions().end();
+        std::string reason;
+        if (!server_supports_cuda_shm) {
+          std::cerr << "Triton server does not advertise cuda_shared_memory support. Falling back to non-CUDA input "
+                       "transport."
+                    << std::endl;
+        } else if (!LocalCudaSharedMemorySupported(&reason)) {
+          std::cerr << "Local CUDA shared memory is not available: " << reason
+                    << ". Falling back to non-CUDA input transport." << std::endl;
+        } else {
+          cuda_input_shm_enabled_ = true;
+        }
+      }
+#else
+      std::cerr << "triton_cpp was built without CUDA SHM support. Falling back to non-CUDA input transport."
+                << std::endl;
+#endif
+    }
   }
 
   // Rule of 5: Disable copy and move operations
@@ -76,8 +113,12 @@ class TritonInterface {
   TritonInterface(TritonInterface&&) = delete;
   TritonInterface& operator=(TritonInterface&&) = delete;
   ~TritonInterface() {
-    if (shm_) {
+    if (cuda_input_shm_enabled_) {
+      triton_client_->UnregisterCudaSharedMemory(INPUT_SHM_NAME);
+    } else if (shm_) {
       triton_client_->UnregisterSystemSharedMemory(INPUT_SHM_NAME);
+    }
+    if (shm_) {
       triton_client_->UnregisterSystemSharedMemory(OUTPUT_SHM_NAME);
     }
   };
@@ -115,11 +156,32 @@ class TritonInterface {
         output_metadata_.emplace(name, InputOutputMetaData{shape, datatype});
       }
     }
-    if (shm_) {
+    if (shm_ || cuda_input_shm_enabled_) {
       triton_client_->UnregisterSystemSharedMemory();
       triton_client_->UnregisterCudaSharedMemory();
-      setup_shm_inputs(input_metadata_);
-      setup_shm_outputs(output_metadata_);
+      if (cuda_input_shm_enabled_) {
+        try {
+          setup_cuda_shm_inputs(input_metadata_);
+        } catch (const std::exception& e) {
+          std::cerr << "Failed to initialize Triton CUDA input shared memory: " << e.what()
+                    << ". Falling back to non-CUDA input transport." << std::endl;
+          cuda_input_shm_enabled_ = false;
+          if (shm_) {
+            setup_shm_inputs(input_metadata_);
+          } else {
+            setup_standard_inputs(input_metadata_);
+          }
+        }
+      } else if (shm_) {
+        setup_shm_inputs(input_metadata_);
+      } else {
+        setup_standard_inputs(input_metadata_);
+      }
+      if (shm_) {
+        setup_shm_outputs(output_metadata_);
+      } else {
+        setup_standard_outputs(output_metadata_);
+      }
     } else {
       if (!variable_input_size_) {
         setup_standard_inputs(input_metadata_);
@@ -178,6 +240,9 @@ class TritonInterface {
       CreateInputTensor(name, rows);
     }
     auto& input = inputs_[name];
+    if (input.data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
+    }
     if (rows * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
       ss << name << ": rows: " << rows << " sizeof(T): " << sizeof(T) << " input.data_raw_size: " << input.data_raw_size
@@ -203,6 +268,9 @@ class TritonInterface {
       CreateInputTensor(name, rows, cols);
     }
     auto& input = inputs_[name];
+    if (input.data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
+    }
     if (rows * cols * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
       ss << name << ": rows: " << rows << " cols: " << cols << " sizeof(T): " << sizeof(T)
@@ -231,10 +299,12 @@ class TritonInterface {
       CreateInputTensor(name, dim0, dim1, dim2, dims...);
     }
     auto& input = inputs_[name];
+    if (input.data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
+    }
     if (((dim0 * dim1 * dim2) * ... * dims) * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
       ss << name << ": dims: " << dim0 << ", " << dim1 << ", " << dim2;
-      // Print the further dims, separated by commas
       ((ss << ", " << dims), ...);
       ss << " sizeof(T): " << sizeof(T) << " input.data_raw_size: " << input.data_raw_size << std::endl;
       throw std::invalid_argument("Invalid input tensor size: " + ss.str());
@@ -249,11 +319,42 @@ class TritonInterface {
    * @return std::vector<uint8_t>& raw buffer
    */
   std::pair<uint8_t*, std::size_t> getInputTensor(const std::string& name) {
-    if (variable_input_size_) {
+    if (variable_input_size_ && inputs_.count(name) == 0) {
       throw(std::invalid_argument("Variable input size is enabled, but no size was provided for input " + name));
     }
     auto& input = inputs_[name];
+    if (input.data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
+    }
     return {input.data_raw, input.data_raw_size};
+  }
+
+  bool usesCudaInputSharedMemory() const { return cuda_input_shm_enabled_; }
+
+  std::pair<uint8_t*, std::size_t> getInputTensorDevice(const std::string& name) {
+    auto& input = inputs_.at(name);
+    if (input.device_data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is not backed by CUDA shared memory");
+    }
+    return {input.device_data_raw, input.data_raw_size};
+  }
+
+  void copyInputTensorToDevice(const std::string& name, const void* host_data, std::size_t bytes) {
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM)
+    auto& input = inputs_.at(name);
+    if (input.device_data_raw == nullptr) {
+      throw std::invalid_argument("Input tensor '" + name + "' is not backed by CUDA shared memory");
+    }
+    if (bytes != input.data_raw_size) {
+      throw std::invalid_argument("Input tensor '" + name + "' byte size mismatch for host-to-device copy");
+    }
+    throw_on_cuda_error(cudaMemcpy(input.device_data_raw, host_data, bytes, cudaMemcpyHostToDevice), "cudaMemcpy");
+#else
+    (void)name;
+    (void)host_data;
+    (void)bytes;
+    throw std::invalid_argument("triton_cpp was built without CUDA SHM support");
+#endif
   }
 
   /**
@@ -408,8 +509,7 @@ class TritonInterface {
       auto input = model_config.config().input(i);
       std::vector<int64_t> shape{};
       if (model_config.config().max_batch_size() != 0) {
-        shape.push_back(1);  // start with batch dimension. Triton deliberately does not output this, but
-                             // requires it to be configured in the InferInput
+        shape.push_back(1);
       }
 
       for (int j{0}; j < input.dims_size(); ++j) {
@@ -474,7 +574,6 @@ class TritonInterface {
 
     fail_on_error(triton_client_->RegisterSystemSharedMemory(INPUT_SHM_NAME, input_shm_->getKey(), shm_size),
                   "RegisterSystemSharedMemory");
-    int64_t offset{0};
     for (const auto& [name, meta] : metadata) {
       std::size_t current_shm_size = meta.bytesize;
       triton::client::InferInput* input_ptr{nullptr};
@@ -484,6 +583,34 @@ class TritonInterface {
       inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
       current_input_shm += current_shm_size;
     }
+  }
+
+  void setup_cuda_shm_inputs(const std::map<std::string, InputOutputMetaData>& metadata) {
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM)
+    auto shm_size = std::accumulate(metadata.begin(), metadata.end(), 0l,
+                                    [](int64_t a, const auto& b) { return a + b.second.bytesize; });
+    input_cuda_shm_ = std::make_unique<CudaSharedMemoryRegion>(INPUT_SHM_NAME, shm_size);
+    uint8_t* current_input_shm = input_cuda_shm_->getDeviceAddress();
+    const uint8_t* input_shm_begin = current_input_shm;
+
+    fail_on_error(triton_client_->RegisterCudaSharedMemory(INPUT_SHM_NAME, input_cuda_shm_->getIpcHandle(),
+                                                           input_cuda_shm_->getDeviceId(), shm_size),
+                  "RegisterCudaSharedMemory");
+
+    for (const auto& [name, meta] : metadata) {
+      std::size_t current_shm_size = meta.bytesize;
+      triton::client::InferInput* input_ptr{nullptr};
+      triton::client::InferInput::Create(&input_ptr, name, meta.shape,
+                                         inference::DataType_Name(meta.datatype).substr(5));
+      inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), nullptr, current_input_shm,
+                       current_shm_size};
+      inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
+      current_input_shm += current_shm_size;
+    }
+#else
+    (void)metadata;
+    throw std::invalid_argument("triton_cpp was built without CUDA SHM support");
+#endif
   }
 
   void setup_standard_outputs(const std::map<std::string, InputOutputMetaData>& metadata) {
@@ -503,7 +630,6 @@ class TritonInterface {
 
     fail_on_error(triton_client_->RegisterSystemSharedMemory(OUTPUT_SHM_NAME, output_shm_->getKey(), shm_size),
                   "RegisterSystemSharedMemory");
-    int64_t offset{0};
     for (const auto& [name, meta] : metadata) {
       std::size_t current_shm_size = meta.bytesize;
       triton::client::InferRequestedOutput* output_ptr{nullptr};
@@ -514,20 +640,23 @@ class TritonInterface {
     }
   }
 
-  triton::client::InferOptions options_;  // Options for communication with the server
-  bool shm_;                              // Whether to use shared memory
-  bool variable_input_size_;              // Whether the input size is variable
-  std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;  // Raw triton client
-  std::map<std::string, InputOutputMetaData> input_metadata_;                 // Metadata for inputs
-  std::map<std::string, InputOutputMetaData> output_metadata_;                // Metadata for outputs
-  std::unique_ptr<SharedMemoryRegion> input_shm_;                             // Shared memory for inputs
-  std::unique_ptr<SharedMemoryRegion> output_shm_;                            // Shared memory for outputs
-  std::string model_info_;                                                    // Human-readable model info
-  std::map<std::string, InputData> inputs_;               // Input buffers, for convenience accessible by their name
-  ModelOutput outputs_;                                   // Requested outputs
-  std::shared_ptr<triton::client::InferResult> results_;  // Output buffers
-  std::vector<triton::client::InferInput*> raw_inputs_;   // Raw pointers to inputs
-  std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;  // Raw pointers to outputs
+  triton::client::InferOptions options_;
+  bool shm_;
+  bool variable_input_size_;
+  bool cuda_input_shm_requested_ = false;
+  bool cuda_input_shm_enabled_ = false;
+  std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;
+  std::map<std::string, InputOutputMetaData> input_metadata_;
+  std::map<std::string, InputOutputMetaData> output_metadata_;
+  std::unique_ptr<SharedMemoryRegion> input_shm_;
+  std::unique_ptr<CudaSharedMemoryRegion> input_cuda_shm_;
+  std::unique_ptr<SharedMemoryRegion> output_shm_;
+  std::string model_info_;
+  std::map<std::string, InputData> inputs_;
+  ModelOutput outputs_;
+  std::shared_ptr<triton::client::InferResult> results_;
+  std::vector<triton::client::InferInput*> raw_inputs_;
+  std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;
 
   const std::string RANDOM_INSTANCE_STRING = randstring(10);
   const std::string INPUT_SHM_NAME = "input_data";

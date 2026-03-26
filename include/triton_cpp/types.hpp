@@ -104,12 +104,20 @@ struct InputData {
   std::shared_ptr<triton::client::InferInput> input;
   std::vector<uint8_t> data;
   uint8_t* data_raw;
+  uint8_t* device_data_raw;
   std::size_t data_raw_size;
   InputData() = default;
   InputData(std::shared_ptr<triton::client::InferInput> input, std::vector<uint8_t>&& data)
-      : input{input}, data{data}, data_raw{this->data.data()}, data_raw_size{this->data.size()} {}
+      : input{input},
+        data{data},
+        data_raw{this->data.data()},
+        device_data_raw{nullptr},
+        data_raw_size{this->data.size()} {}
   InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, std::size_t data_raw_size)
-      : input{input}, data{}, data_raw{data_raw}, data_raw_size{data_raw_size} {}
+      : input{input}, data{}, data_raw{data_raw}, device_data_raw{nullptr}, data_raw_size{data_raw_size} {}
+  InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, uint8_t* device_data_raw,
+            std::size_t data_raw_size)
+      : input{input}, data{}, data_raw{data_raw}, device_data_raw{device_data_raw}, data_raw_size{data_raw_size} {}
 };
 
 struct InputOutputMetaData {
