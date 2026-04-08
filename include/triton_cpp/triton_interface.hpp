@@ -156,7 +156,7 @@ class TritonInterface {
         output_metadata_.emplace(name, InputOutputMetaData{shape, datatype});
       }
     }
-    if (shm_ || cuda_input_shm_enabled_) {
+    if (!variable_input_size_) {
       if (cuda_input_shm_enabled_) {
         try {
           setup_cuda_shm_inputs(input_metadata_);
@@ -169,15 +169,11 @@ class TritonInterface {
       } else {
         setup_standard_inputs(input_metadata_);
       }
-      if (shm_) {
-        setup_shm_outputs(output_metadata_);
-      } else {
-        setup_standard_outputs(output_metadata_);
-      }
+    }
+
+    if (shm_) {
+      setup_shm_outputs(output_metadata_);
     } else {
-      if (!variable_input_size_) {
-        setup_standard_inputs(input_metadata_);
-      }
       setup_standard_outputs(output_metadata_);
     }
 
