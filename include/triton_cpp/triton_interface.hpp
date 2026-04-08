@@ -553,6 +553,7 @@ class TritonInterface {
       auto input = model_config.config().input(i);
       std::vector<int64_t> shape{};
       if (model_config.config().max_batch_size() != 0) {
+        // Triton omits the batch dimension from the reported tensor dims, but InferInput expects it.
         shape.push_back(1);
       }
 
