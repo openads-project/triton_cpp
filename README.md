@@ -143,6 +143,9 @@ If the server and client run on the same machine, using shared memory is much mo
 
 1. To test wether SHM is working as expected, go to `/dev/shm` in both containers and observe, while inference is running, if files with data buffers are created there.
 
+Shared-memory regions are registered with Triton using per-client unique names, so multiple independent
+`TritonInterface` instances can use SHM safely at the same time, even when they point to the same Triton server.
+
 ### Use CUDA input shared memory
 
 If your input tensors are already on GPU memory, `cuda_input_shm=true` avoids copying them back to host memory before sending them to Triton.

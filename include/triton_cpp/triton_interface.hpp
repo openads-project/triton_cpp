@@ -113,14 +113,7 @@ class TritonInterface {
   TritonInterface(TritonInterface&&) = delete;
   TritonInterface& operator=(TritonInterface&&) = delete;
   ~TritonInterface() {
-    if (cuda_input_shm_enabled_) {
-      triton_client_->UnregisterCudaSharedMemory(INPUT_SHM_NAME);
-    } else if (shm_) {
-      triton_client_->UnregisterSystemSharedMemory(INPUT_SHM_NAME);
-    }
-    if (shm_) {
-      triton_client_->UnregisterSystemSharedMemory(OUTPUT_SHM_NAME);
-    }
+    releaseSharedMemoryRegistrations();
   };
 
   /**
@@ -131,6 +124,12 @@ class TritonInterface {
    */
   void initInOutputs(std::optional<std::map<std::string, std::vector<int64_t>>> special_output_shapes,
                      std::optional<std::map<std::string, std::vector<int64_t>>> special_input_shapes = std::nullopt) {
+    releaseSharedMemoryRegistrations();
+    input_shm_.reset();
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM)
+    input_cuda_shm_.reset();
+#endif
+    output_shm_.reset();
     inputs_.clear();
     outputs_.clear();
     if (special_input_shapes.has_value()) {
@@ -157,8 +156,6 @@ class TritonInterface {
       }
     }
     if (shm_ || cuda_input_shm_enabled_) {
-      triton_client_->UnregisterSystemSharedMemory();
-      triton_client_->UnregisterCudaSharedMemory();
       if (cuda_input_shm_enabled_) {
         try {
           setup_cuda_shm_inputs(input_metadata_);
@@ -500,6 +497,34 @@ class TritonInterface {
   }
 
  private:
+  void releaseSharedMemoryRegistrations() {
+    if (triton_client_ == nullptr) {
+      return;
+    }
+
+    if (cuda_input_shm_enabled_) {
+      const auto status = triton_client_->UnregisterCudaSharedMemory(INPUT_SHM_NAME);
+      if (!status.IsOk()) {
+        std::cerr << "Failed to unregister Triton CUDA shared memory region '" << INPUT_SHM_NAME
+                  << "': " << status.Message() << std::endl;
+      }
+    } else if (shm_) {
+      const auto status = triton_client_->UnregisterSystemSharedMemory(INPUT_SHM_NAME);
+      if (!status.IsOk()) {
+        std::cerr << "Failed to unregister Triton system shared memory region '" << INPUT_SHM_NAME
+                  << "': " << status.Message() << std::endl;
+      }
+    }
+
+    if (shm_) {
+      const auto status = triton_client_->UnregisterSystemSharedMemory(OUTPUT_SHM_NAME);
+      if (!status.IsOk()) {
+        std::cerr << "Failed to unregister Triton system shared memory region '" << OUTPUT_SHM_NAME
+                  << "': " << status.Message() << std::endl;
+      }
+    }
+  }
+
   std::pair<std::map<std::string, InputOutputMetaData>, std::map<std::string, InputOutputMetaData>> build_model_info(
       const inference::ModelConfigResponse& model_config) {
     std::pair<std::map<std::string, InputOutputMetaData>, std::map<std::string, InputOutputMetaData>> metadata;
@@ -661,9 +686,9 @@ class TritonInterface {
   std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;
 
   const std::string RANDOM_INSTANCE_STRING = randstring(10);
-  const std::string INPUT_SHM_NAME = "input_data";
+  const std::string INPUT_SHM_NAME = "input_data_" + RANDOM_INSTANCE_STRING;
   const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;
-  const std::string OUTPUT_SHM_NAME = "output_data";
+  const std::string OUTPUT_SHM_NAME = "output_data_" + RANDOM_INSTANCE_STRING;
   const std::string OUTPUT_SHM_KEY = "/triton_cpp_output_" + RANDOM_INSTANCE_STRING;
 };
 
