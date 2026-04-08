@@ -166,6 +166,35 @@ Notes:
   - `getInputTensorDevice(...)`
   - `copyInputTensorToDevice(...)`
 
+Example:
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, false, 0.0, true);
+
+ti->initInOutputs({});
+
+if (!ti->usesCudaInputSharedMemory()) {
+  throw std::runtime_error("CUDA input SHM was requested but is not enabled");
+}
+
+// Option 1: use CUDA code to write directly into Triton's CUDA-backed input buffer.
+auto [points_device, points_bytes] = ti->getInputTensorDevice("points_xyz");
+my_cuda_kernel<<<blocks, threads>>>(points_device, points_bytes);
+
+// Option 2: copy from an existing host buffer into the CUDA-backed input.
+std::vector<float> host_points(num_points * 3);
+fill_points(host_points);
+ti->copyInputTensorToDevice("points_xyz", host_points.data(), host_points.size() * sizeof(float));
+
+ti->infer();
+```
+
+For a concrete production example showing `getInputTensorDevice(...)` and
+`copyInputTensorToDevice(...)` together in a real CUDA-input-SHM integration, see
+[`PBODModel.cpp`](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/perception/point_cloud_object_detection/-/blob/387c7bef4e5ec917b920708206afbd179753a033/point_cloud_object_detection/src/PBODModel.cpp#L282).
+
 ### Variable input size
 
 By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
