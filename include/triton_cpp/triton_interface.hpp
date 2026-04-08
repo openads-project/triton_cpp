@@ -228,7 +228,7 @@ class TritonInterface {
       CreateInputTensor(name, rows);
     }
     auto& input = inputs_[name];
-    if (input.data_raw == nullptr) {
+    if (!input.isHostMappable()) {
       throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
     }
     if (rows * sizeof(T) != input.data_raw_size) {
@@ -256,7 +256,7 @@ class TritonInterface {
       CreateInputTensor(name, rows, cols);
     }
     auto& input = inputs_[name];
-    if (input.data_raw == nullptr) {
+    if (!input.isHostMappable()) {
       throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
     }
     if (rows * cols * sizeof(T) != input.data_raw_size) {
@@ -287,7 +287,7 @@ class TritonInterface {
       CreateInputTensor(name, dim0, dim1, dim2, dims...);
     }
     auto& input = inputs_[name];
-    if (input.data_raw == nullptr) {
+    if (!input.isHostMappable()) {
       throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
     }
     if (((dim0 * dim1 * dim2) * ... * dims) * sizeof(T) != input.data_raw_size) {
@@ -311,7 +311,7 @@ class TritonInterface {
       throw(std::invalid_argument("Variable input size is enabled, but no size was provided for input " + name));
     }
     auto& input = inputs_[name];
-    if (input.data_raw == nullptr) {
+    if (!input.isHostMappable()) {
       throw std::invalid_argument("Input tensor '" + name + "' is backed by CUDA shared memory and is not host-mappable");
     }
     return {input.data_raw, input.data_raw_size};
@@ -321,7 +321,7 @@ class TritonInterface {
 
   std::pair<uint8_t*, std::size_t> getInputTensorDevice(const std::string& name) {
     auto& input = inputs_.at(name);
-    if (input.device_data_raw == nullptr) {
+    if (!input.isDeviceBacked()) {
       throw std::invalid_argument("Input tensor '" + name + "' is not backed by CUDA shared memory");
     }
     return {input.device_data_raw, input.data_raw_size};
@@ -330,7 +330,7 @@ class TritonInterface {
   void copyInputTensorToDevice(const std::string& name, const void* host_data, std::size_t bytes) {
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
     auto& input = inputs_.at(name);
-    if (input.device_data_raw == nullptr) {
+    if (!input.isDeviceBacked()) {
       throw std::invalid_argument("Input tensor '" + name + "' is not backed by CUDA shared memory");
     }
     if (bytes != input.data_raw_size) {

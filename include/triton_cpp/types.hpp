@@ -118,6 +118,9 @@ struct InputData {
   InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, uint8_t* device_data_raw,
             std::size_t data_raw_size)
       : input{input}, data{}, data_raw{data_raw}, device_data_raw{device_data_raw}, data_raw_size{data_raw_size} {}
+
+  bool isHostMappable() const { return data_raw != nullptr; }
+  bool isDeviceBacked() const { return device_data_raw != nullptr; }
 };
 
 struct InputOutputMetaData {
