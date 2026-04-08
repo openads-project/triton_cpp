@@ -122,6 +122,8 @@ class TritonInterface {
    * 
    * @param special_output_shapes Some models don't know their output shape, i.e. it is given as -1. In this case, you must provide the correct shape here.
    * @param special_input_shapes Some models don't know their input shape, i.e. it is given as -1. In this case, you must provide the correct shape here.
+   * @throws std::invalid_argument if a provided input or output name is unknown.
+   * @throws std::runtime_error if shared-memory setup was requested but initialization fails.
    */
   void initInOutputs(std::optional<std::map<std::string, std::vector<int64_t>>> special_output_shapes,
                      std::optional<std::map<std::string, std::vector<int64_t>>> special_input_shapes = std::nullopt) {
@@ -292,6 +294,7 @@ class TritonInterface {
     }
     if (((dim0 * dim1 * dim2) * ... * dims) * sizeof(T) != input.data_raw_size) {
       std::stringstream ss;
+      // Print the further dims, separated by commas
       ss << name << ": dims: " << dim0 << ", " << dim1 << ", " << dim2;
       ((ss << ", " << dims), ...);
       ss << " sizeof(T): " << sizeof(T) << " input.data_raw_size: " << input.data_raw_size << std::endl;
@@ -304,7 +307,9 @@ class TritonInterface {
    * @brief Get the raw input buffer
    * 
    * @param name name of the input
-   * @return std::vector<uint8_t>& raw buffer
+   * @return std::pair<uint8_t*, std::size_t> Pointer to the host-mappable input buffer and its size in bytes.
+   * @throws std::invalid_argument if variable input size is enabled and this input has not been created yet,
+   *         or if the input is not host-mappable.
    */
   std::pair<uint8_t*, std::size_t> getInputTensor(const std::string& name) {
     if (variable_input_size_ && inputs_.count(name) == 0) {
@@ -317,8 +322,20 @@ class TritonInterface {
     return {input.data_raw, input.data_raw_size};
   }
 
+  /**
+   * @brief Whether input tensors are currently backed by Triton CUDA shared memory.
+   *
+   * @return true if CUDA shared memory is enabled for inputs, otherwise false.
+   */
   bool usesCudaInputSharedMemory() const { return cuda_input_shm_enabled_; }
 
+  /**
+   * @brief Get the device pointer for a CUDA shared-memory-backed input tensor.
+   *
+   * @param name Name of the input tensor.
+   * @return std::pair<uint8_t*, std::size_t> Device pointer and tensor size in bytes.
+   * @throws std::invalid_argument if the input is not backed by CUDA shared memory.
+   */
   std::pair<uint8_t*, std::size_t> getInputTensorDevice(const std::string& name) {
     auto& input = inputs_.at(name);
     if (!input.isDeviceBacked()) {
@@ -327,6 +344,16 @@ class TritonInterface {
     return {input.device_data_raw, input.data_raw_size};
   }
 
+  /**
+   * @brief Copy host data into a CUDA shared-memory-backed input tensor.
+   *
+   * @param name Name of the input tensor.
+   * @param host_data Pointer to the host buffer to copy from.
+   * @param bytes Number of bytes to copy. Must exactly match the input tensor size.
+   * @throws std::invalid_argument if the tensor is not CUDA-backed, the byte size does not match,
+   *         or triton_cpp was built without CUDA SHM support.
+   * @throws std::runtime_error if the underlying CUDA copy fails.
+   */
   void copyInputTensorToDevice(const std::string& name, const void* host_data, std::size_t bytes) {
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
     auto& input = inputs_.at(name);
@@ -338,6 +365,7 @@ class TritonInterface {
     }
     throw_on_cuda_error(cudaMemcpy(input.device_data_raw, host_data, bytes, cudaMemcpyHostToDevice), "cudaMemcpy");
 #else
+    // Suppress unused-parameter warnings when CUDA SHM support is not compiled in.
     (void)name;
     (void)host_data;
     (void)bytes;
@@ -656,31 +684,31 @@ class TritonInterface {
     }
   }
 
-  triton::client::InferOptions options_;
-  bool shm_;
-  bool variable_input_size_;
-  bool cuda_input_shm_requested_ = false;
-  bool cuda_input_shm_enabled_ = false;
-  std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;
-  std::map<std::string, InputOutputMetaData> input_metadata_;
-  std::map<std::string, InputOutputMetaData> output_metadata_;
-  std::unique_ptr<SharedMemoryRegion> input_shm_;
+  triton::client::InferOptions options_;  // Reused Triton inference options for model/version/timeout.
+  bool shm_;  // Enables system shared memory for input and output transport.
+  bool variable_input_size_;  // Defers input tensor creation until the caller provides shapes.
+  bool cuda_input_shm_requested_ = false;  // Records whether CUDA input SHM was explicitly requested.
+  bool cuda_input_shm_enabled_ = false;  // True once CUDA input SHM support has been validated and activated.
+  std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;  // Underlying Triton gRPC client.
+  std::map<std::string, InputOutputMetaData> input_metadata_;  // Declared input tensor shapes and datatypes.
+  std::map<std::string, InputOutputMetaData> output_metadata_;  // Declared output tensor shapes and datatypes.
+  std::unique_ptr<SharedMemoryRegion> input_shm_;  // Backing system SHM region for host-visible input tensors.
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
-  std::unique_ptr<CudaSharedMemoryRegion> input_cuda_shm_;
+  std::unique_ptr<CudaSharedMemoryRegion> input_cuda_shm_;  // Backing CUDA SHM region for device-resident inputs.
 #endif
-  std::unique_ptr<SharedMemoryRegion> output_shm_;
-  std::string model_info_;
-  std::map<std::string, InputData> inputs_;
-  ModelOutput outputs_;
-  std::shared_ptr<triton::client::InferResult> results_;
-  std::vector<triton::client::InferInput*> raw_inputs_;
-  std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;
+  std::unique_ptr<SharedMemoryRegion> output_shm_;  // Backing system SHM region for output tensors.
+  std::string model_info_;  // Cached human-readable summary of the Triton model interface.
+  std::map<std::string, InputData> inputs_;  // Input tensor handles and their backing buffers keyed by name.
+  ModelOutput outputs_;  // Requested output handles keyed by tensor name.
+  std::shared_ptr<triton::client::InferResult> results_;  // Most recent Triton inference result.
+  std::vector<triton::client::InferInput*> raw_inputs_;  // Raw input handles passed to Triton infer calls.
+  std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;  // Raw output handles passed to Triton infer calls.
 
-  const std::string RANDOM_INSTANCE_STRING = randstring(10);
-  const std::string INPUT_SHM_NAME = "input_data_" + RANDOM_INSTANCE_STRING;
-  const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;
-  const std::string OUTPUT_SHM_NAME = "output_data_" + RANDOM_INSTANCE_STRING;
-  const std::string OUTPUT_SHM_KEY = "/triton_cpp_output_" + RANDOM_INSTANCE_STRING;
+  const std::string RANDOM_INSTANCE_STRING = randstring(10);  // Per-instance suffix to avoid SHM name collisions.
+  const std::string INPUT_SHM_NAME = "input_data_" + RANDOM_INSTANCE_STRING;  // Triton-visible input SHM region name.
+  const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;  // POSIX key for input system SHM.
+  const std::string OUTPUT_SHM_NAME = "output_data_" + RANDOM_INSTANCE_STRING;  // Triton-visible output SHM region name.
+  const std::string OUTPUT_SHM_KEY = "/triton_cpp_output_" + RANDOM_INSTANCE_STRING;  // POSIX key for output system SHM.
 };
 
 }  // namespace triton_cpp
