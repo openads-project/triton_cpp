@@ -82,27 +82,28 @@ class TritonInterface {
       inference::ServerMetadataResponse server_metadata;
       const auto metadata_status = triton_client_->ServerMetadata(&server_metadata);
       if (!metadata_status.IsOk()) {
-        std::cerr << "Failed to query Triton server metadata for CUDA SHM support: " << metadata_status.Message()
-                  << ". Falling back to non-CUDA input transport." << std::endl;
+        throw std::runtime_error("CUDA input shared memory was requested, but Triton server metadata could not be "
+                                 "queried: " +
+                                 metadata_status.Message());
       } else {
         const bool server_supports_cuda_shm =
             std::find(server_metadata.extensions().begin(), server_metadata.extensions().end(), "cuda_shared_memory") !=
             server_metadata.extensions().end();
         std::string reason;
         if (!server_supports_cuda_shm) {
-          std::cerr << "Triton server does not advertise cuda_shared_memory support. Falling back to non-CUDA input "
-                       "transport."
-                    << std::endl;
+          throw std::runtime_error("CUDA input shared memory was requested, but the Triton server does not advertise "
+                                   "cuda_shared_memory support");
         } else if (!LocalCudaSharedMemorySupported(&reason)) {
-          std::cerr << "Local CUDA shared memory is not available: " << reason
-                    << ". Falling back to non-CUDA input transport." << std::endl;
+          throw std::runtime_error("CUDA input shared memory was requested, but local CUDA shared memory is not "
+                                   "available: " +
+                                   reason);
         } else {
           cuda_input_shm_enabled_ = true;
         }
       }
 #else
-      std::cerr << "triton_cpp was built without CUDA SHM support. Falling back to non-CUDA input transport."
-                << std::endl;
+      throw std::runtime_error("CUDA input shared memory was requested, but triton_cpp was built without CUDA SHM "
+                               "support");
 #endif
     }
   }
@@ -160,14 +161,8 @@ class TritonInterface {
         try {
           setup_cuda_shm_inputs(input_metadata_);
         } catch (const std::exception& e) {
-          std::cerr << "Failed to initialize Triton CUDA input shared memory: " << e.what()
-                    << ". Falling back to non-CUDA input transport." << std::endl;
-          cuda_input_shm_enabled_ = false;
-          if (shm_) {
-            setup_shm_inputs(input_metadata_);
-          } else {
-            setup_standard_inputs(input_metadata_);
-          }
+          throw std::runtime_error("CUDA input shared memory was requested, but initialization failed: " +
+                                   std::string(e.what()));
         }
       } else if (shm_) {
         setup_shm_inputs(input_metadata_);

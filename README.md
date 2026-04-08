@@ -110,7 +110,7 @@ TritonInterface(const std::string& model_name,
 | `variable_input_size` | `bool` | `false` | Allow input shapes to change between inference calls (see [Variable input size](#variable-input-size)) |
 | `retry_connection` | `bool` | `false` | Retry connecting to the server until it becomes available (see [Retry connection](#retry-connection)) |
 | `client_timeout_s` | `double` | `0.0` | Client-side inference timeout in seconds; `0.0` disables it (see [Inference timeout](#inference-timeout)) |
-| `cuda_input_shm` | `bool` | `false` | Use Triton CUDA shared memory for input tensors when supported. Falls back to normal input transport if unavailable. |
+| `cuda_input_shm` | `bool` | `false` | Require Triton CUDA shared memory for input tensors. Construction fails with an informative error if it is unavailable. |
 
 ### Use host shared memory
 
@@ -159,7 +159,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 Notes:
 
 - this is for input tensors only; outputs still follow the normal path unless `shm=true`
-- if CUDA shared memory is unsupported by the local client or Triton server, triton_cpp falls back to normal input transport
+- if CUDA shared memory is unsupported by the local client, Triton server, or `triton_cpp` build, construction fails with an informative error
 - host-mapped `getInputTensor(...)` access is not available for CUDA-backed input buffers
 - for CUDA-backed inputs, use:
   - `usesCudaInputSharedMemory()`
