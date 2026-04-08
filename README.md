@@ -112,6 +112,14 @@ TritonInterface(const std::string& model_name,
 | `client_timeout_s` | `double` | `0.0` | Client-side inference timeout in seconds; `0.0` disables it (see [Inference timeout](#inference-timeout)) |
 | `cuda_input_shm` | `bool` | `false` | Require Triton CUDA shared memory for input tensors. Construction fails with an informative error if it is unavailable. |
 
+Transport combinations:
+
+- `shm=false`, `cuda_input_shm=false`: standard Triton transport for inputs and outputs
+- `shm=true`, `cuda_input_shm=false`: system shared memory for inputs and outputs
+- `shm=false`, `cuda_input_shm=true`: CUDA shared memory for inputs, standard Triton transport for outputs
+- `shm=true`, `cuda_input_shm=true`: CUDA shared memory for inputs, system shared memory for outputs
+- `variable_input_size=true` cannot be combined with either `shm=true` or `cuda_input_shm=true`
+
 ### Use host shared memory
 
 triton_cpp provides the input and output as serialized Protobuf stream to the server per default.
