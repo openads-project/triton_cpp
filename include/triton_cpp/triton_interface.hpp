@@ -649,7 +649,9 @@ class TritonInterface {
   std::map<std::string, InputOutputMetaData> input_metadata_;
   std::map<std::string, InputOutputMetaData> output_metadata_;
   std::unique_ptr<SharedMemoryRegion> input_shm_;
+#if defined(TRITON_CPP_ENABLE_CUDA_SHM)
   std::unique_ptr<CudaSharedMemoryRegion> input_cuda_shm_;
+#endif
   std::unique_ptr<SharedMemoryRegion> output_shm_;
   std::string model_info_;
   std::map<std::string, InputData> inputs_;

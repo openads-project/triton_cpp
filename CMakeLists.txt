@@ -35,6 +35,8 @@ if(${ROS_VERSION} EQUAL 2)
   if(CUDAToolkit_FOUND)
     target_link_libraries(${PROJECT_NAME} INTERFACE CUDA::cudart)
     target_compile_definitions(${PROJECT_NAME} INTERFACE TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
+    ament_export_dependencies(CUDAToolkit)
+    ament_export_definitions(TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
   endif()
 
   ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET)
