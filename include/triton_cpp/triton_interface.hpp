@@ -611,6 +611,7 @@ class TritonInterface {
   }
 
   std::size_t computeSharedMemorySize(const std::map<std::string, InputOutputMetaData>& metadata) const {
+    // Offsets are aligned by datatype with a minimum alignment of 8 bytes.
     std::size_t total_size = 0;
     for (const auto& [_, meta] : metadata) {
       total_size = alignUp(total_size, getSharedMemoryAlignment(meta.datatype));

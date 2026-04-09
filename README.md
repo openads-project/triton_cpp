@@ -154,6 +154,9 @@ If the server and client run on the same machine, using shared memory is much mo
 Shared-memory regions are registered with Triton using per-client unique names, so multiple independent
 `TritonInterface` instances can use SHM safely at the same time, even when they point to the same Triton server.
 
+When SHM is enabled, tensor offsets inside each shared region are aligned using `max(type_alignment, 8)` to avoid
+misaligned accesses for mixed datatypes (for example `FP32`, `INT64`, and `BOOL`) in the same packed buffer.
+
 ### Use CUDA input shared memory
 
 If your input tensors are already on GPU memory, `cuda_input_shm=true` avoids copying them back to host memory before sending them to Triton.
