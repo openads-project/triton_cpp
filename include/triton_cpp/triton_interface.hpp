@@ -610,33 +610,42 @@ class TritonInterface {
     }
   }
 
+  std::size_t computeSharedMemorySize(const std::map<std::string, InputOutputMetaData>& metadata) const {
+    std::size_t total_size = 0;
+    for (const auto& [_, meta] : metadata) {
+      total_size = alignUp(total_size, getSharedMemoryAlignment(meta.datatype));
+      total_size += static_cast<std::size_t>(meta.bytesize);
+    }
+    return total_size;
+  }
+
   void setup_shm_inputs(const std::map<std::string, InputOutputMetaData>& metadata) {
-    auto shm_size = std::accumulate(metadata.begin(), metadata.end(), 0l,
-                                    [](int64_t a, const auto& b) { return a + b.second.bytesize; });
+    const auto shm_size = static_cast<std::int64_t>(computeSharedMemorySize(metadata));
     input_shm_ = std::make_unique<SharedMemoryRegion>(INPUT_SHM_KEY, shm_size);
-    uint8_t* current_input_shm = input_shm_->getAddress();
-    const uint8_t* input_shm_begin = current_input_shm;
+    const uint8_t* input_shm_begin = input_shm_->getAddress();
+    std::size_t current_offset = 0;
 
     fail_on_error(triton_client_->RegisterSystemSharedMemory(INPUT_SHM_NAME, input_shm_->getKey(), shm_size),
                   "RegisterSystemSharedMemory");
     for (const auto& [name, meta] : metadata) {
       std::size_t current_shm_size = meta.bytesize;
+      current_offset = alignUp(current_offset, getSharedMemoryAlignment(meta.datatype));
+      uint8_t* current_input_shm = input_shm_->getAddress() + current_offset;
       triton::client::InferInput* input_ptr{nullptr};
       triton::client::InferInput::Create(&input_ptr, name, meta.shape,
                                          inference::DataType_Name(meta.datatype).substr(5));
       inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), current_input_shm, current_shm_size};
       inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
-      current_input_shm += current_shm_size;
+      current_offset += current_shm_size;
     }
   }
 
   void setup_cuda_shm_inputs(const std::map<std::string, InputOutputMetaData>& metadata) {
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
-    auto shm_size = std::accumulate(metadata.begin(), metadata.end(), 0l,
-                                    [](int64_t a, const auto& b) { return a + b.second.bytesize; });
+    const auto shm_size = static_cast<std::int64_t>(computeSharedMemorySize(metadata));
     input_cuda_shm_ = std::make_unique<CudaSharedMemoryRegion>(INPUT_SHM_NAME, shm_size);
-    uint8_t* current_input_shm = input_cuda_shm_->getDeviceAddress();
-    const uint8_t* input_shm_begin = current_input_shm;
+    const uint8_t* input_shm_begin = input_cuda_shm_->getDeviceAddress();
+    std::size_t current_offset = 0;
 
     fail_on_error(triton_client_->RegisterCudaSharedMemory(INPUT_SHM_NAME, input_cuda_shm_->getIpcHandle(),
                                                            input_cuda_shm_->getDeviceId(), shm_size),
@@ -644,13 +653,15 @@ class TritonInterface {
 
     for (const auto& [name, meta] : metadata) {
       std::size_t current_shm_size = meta.bytesize;
+      current_offset = alignUp(current_offset, getSharedMemoryAlignment(meta.datatype));
+      uint8_t* current_input_shm = input_cuda_shm_->getDeviceAddress() + current_offset;
       triton::client::InferInput* input_ptr{nullptr};
       triton::client::InferInput::Create(&input_ptr, name, meta.shape,
                                          inference::DataType_Name(meta.datatype).substr(5));
       inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), nullptr, current_input_shm,
                        current_shm_size};
       inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
-      current_input_shm += current_shm_size;
+      current_offset += current_shm_size;
     }
 #else
     (void)metadata;
@@ -667,21 +678,22 @@ class TritonInterface {
   }
 
   void setup_shm_outputs(const std::map<std::string, InputOutputMetaData>& metadata) {
-    auto shm_size = std::accumulate(metadata.begin(), metadata.end(), 0l,
-                                    [](int64_t a, const auto& b) { return a + b.second.bytesize; });
+    const auto shm_size = static_cast<std::int64_t>(computeSharedMemorySize(metadata));
     output_shm_ = std::make_unique<SharedMemoryRegion>(OUTPUT_SHM_KEY, shm_size);
-    uint8_t* current_output_shm = output_shm_->getAddress();
-    const uint8_t* output_shm_begin = current_output_shm;
+    const uint8_t* output_shm_begin = output_shm_->getAddress();
+    std::size_t current_offset = 0;
 
     fail_on_error(triton_client_->RegisterSystemSharedMemory(OUTPUT_SHM_NAME, output_shm_->getKey(), shm_size),
                   "RegisterSystemSharedMemory");
     for (const auto& [name, meta] : metadata) {
       std::size_t current_shm_size = meta.bytesize;
+      current_offset = alignUp(current_offset, getSharedMemoryAlignment(meta.datatype));
+      uint8_t* current_output_shm = output_shm_->getAddress() + current_offset;
       triton::client::InferRequestedOutput* output_ptr{nullptr};
       triton::client::InferRequestedOutput::Create(&output_ptr, name);
       outputs_[name] = (std::shared_ptr<triton::client::InferRequestedOutput>(output_ptr));
       outputs_[name]->SetSharedMemory(OUTPUT_SHM_NAME, current_shm_size, current_output_shm - output_shm_begin);
-      current_output_shm += current_shm_size;
+      current_offset += current_shm_size;
     }
   }
 

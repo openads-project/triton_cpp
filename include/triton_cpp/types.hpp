@@ -90,6 +90,23 @@ inline TritonDataType getZero(inference::DataType type) {
   }
 }
 
+inline std::size_t getAlignment(inference::DataType type) {
+  return std::visit([](auto&& arg) { return alignof(std::decay_t<decltype(arg)>); }, getZero(type));
+}
+
+inline std::size_t getSharedMemoryAlignment(inference::DataType type) {
+  constexpr std::size_t kMinSharedMemoryAlignment = 8;
+  return std::max(getAlignment(type), kMinSharedMemoryAlignment);
+}
+
+inline std::size_t alignUp(std::size_t offset, std::size_t alignment) {
+  if (alignment <= 1) {
+    return offset;
+  }
+  const std::size_t remainder = offset % alignment;
+  return remainder == 0 ? offset : offset + (alignment - remainder);
+}
+
 /**
  * @brief Type alias for internal storage of ModelOutputs
  * 
