@@ -97,7 +97,8 @@ TritonInterface(const std::string& model_name,
                 bool shm,
                 bool variable_input_size = false,
                 bool retry_connection   = false,
-                double client_timeout_s = 0.0)
+                double client_timeout_s = 0.0,
+                bool cuda_input_shm     = false)
 ```
 
 | Parameter | Type | Default | Description |
@@ -105,12 +106,21 @@ TritonInterface(const std::string& model_name,
 | `model_name` | `string` | — | Name of the model to load from the Triton server |
 | `model_version` | `string` | — | Version of the model (e.g. `"1"`) |
 | `server_url` | `string` | — | gRPC URL of the Triton server (e.g. `"127.0.0.1:8001"`) |
-| `shm` | `bool` | — | Use shared memory for zero-copy data transfer (see [Use shared memory](#use-shared-memory)) |
+| `shm` | `bool` | — | Use host/system shared memory for Triton input and output transport (see [Use host shared memory](#use-host-shared-memory)) |
 | `variable_input_size` | `bool` | `false` | Allow input shapes to change between inference calls (see [Variable input size](#variable-input-size)) |
 | `retry_connection` | `bool` | `false` | Retry connecting to the server until it becomes available (see [Retry connection](#retry-connection)) |
 | `client_timeout_s` | `double` | `0.0` | Client-side inference timeout in seconds; `0.0` disables it (see [Inference timeout](#inference-timeout)) |
+| `cuda_input_shm` | `bool` | `false` | Require Triton CUDA shared memory for input tensors. Construction fails with an informative error if it is unavailable. |
 
-### Use shared memory
+Transport combinations:
+
+- `shm=false`, `cuda_input_shm=false`: standard Triton transport for inputs and outputs
+- `shm=true`, `cuda_input_shm=false`: system shared memory for inputs and outputs
+- `shm=false`, `cuda_input_shm=true`: CUDA shared memory for inputs, standard Triton transport for outputs
+- `shm=true`, `cuda_input_shm=true`: CUDA shared memory for inputs, system shared memory for outputs
+- `variable_input_size=true` cannot be combined with either `shm=true` or `cuda_input_shm=true`
+
+### Use host shared memory
 
 triton_cpp provides the input and output as serialized Protobuf stream to the server per default.
 If the server and client run on the same machine, using shared memory is much more efficient.
@@ -141,6 +151,61 @@ If the server and client run on the same machine, using shared memory is much mo
 
 1. To test wether SHM is working as expected, go to `/dev/shm` in both containers and observe, while inference is running, if files with data buffers are created there.
 
+Shared-memory regions are registered with Triton using per-client unique names, so multiple independent
+`TritonInterface` instances can use SHM safely at the same time, even when they point to the same Triton server.
+
+When SHM is enabled, tensor offsets inside each shared region are aligned using `max(type_alignment, 8)` to avoid
+misaligned accesses for mixed datatypes (for example `FP32`, `INT64`, and `BOOL`) in the same packed buffer.
+
+### Use CUDA input shared memory
+
+If your input tensors are already on GPU memory, `cuda_input_shm=true` avoids copying them back to host memory before sending them to Triton.
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, false, 0.0, true);
+```
+
+Notes:
+
+- this is for input tensors only; outputs still follow the normal path unless `shm=true`
+- if CUDA shared memory is unsupported by the local client, Triton server, or `triton_cpp` build, construction fails with an informative error
+- host-mapped `getInputTensor(...)` access is not available for CUDA-backed input buffers
+- for CUDA-backed inputs, use:
+  - `usesCudaInputSharedMemory()`
+  - `getInputTensorDevice(...)`
+  - `copyInputTensorToDevice(...)`
+
+Example:
+
+```c++
+std::unique_ptr<triton_cpp::TritonInterface> ti =
+    std::make_unique<triton_cpp::TritonInterface>(
+        "PBOD", "1", "127.0.0.1:8001", false, false, false, 0.0, true);
+
+ti->initInOutputs({});
+
+if (!ti->usesCudaInputSharedMemory()) {
+  throw std::runtime_error("CUDA input SHM was requested but is not enabled");
+}
+
+// Option 1: use CUDA code to write directly into Triton's CUDA-backed input buffer.
+auto [points_device, points_bytes] = ti->getInputTensorDevice("points_xyz");
+my_cuda_kernel<<<blocks, threads>>>(points_device, points_bytes);
+
+// Option 2: copy from an existing host buffer into the CUDA-backed input.
+std::vector<float> host_points(num_points * 3);
+fill_points(host_points);
+ti->copyInputTensorToDevice("points_xyz", host_points.data(), host_points.size() * sizeof(float));
+
+ti->infer();
+```
+
+For a concrete production example showing `getInputTensorDevice(...)` and
+`copyInputTensorToDevice(...)` together in a real CUDA-input-SHM integration, see
+[`PBODModel.cpp`](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/perception/point_cloud_object_detection/-/blob/387c7bef4e5ec917b920708206afbd179753a033/point_cloud_object_detection/src/PBODModel.cpp#L282).
+
 ### Variable input size
 
 By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
@@ -153,7 +218,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
         "behavior-planning", "1", "127.0.0.1:8001", false, true);
 ```
 
-> **Note:** `variable_input_size = true` and `shm = true` cannot be combined and will throw `std::invalid_argument`.
+> **Note:** `variable_input_size = true` cannot be combined with `shm = true` or `cuda_input_shm = true`. If you try, the `TritonInterface` constructor throws `std::invalid_argument`.
 
 ### Retry connection
 

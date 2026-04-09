@@ -90,6 +90,23 @@ inline TritonDataType getZero(inference::DataType type) {
   }
 }
 
+inline std::size_t getAlignment(inference::DataType type) {
+  return std::visit([](auto&& arg) { return alignof(std::decay_t<decltype(arg)>); }, getZero(type));
+}
+
+inline std::size_t getSharedMemoryAlignment(inference::DataType type) {
+  constexpr std::size_t kMinSharedMemoryAlignment = 8;
+  return std::max(getAlignment(type), kMinSharedMemoryAlignment);
+}
+
+inline std::size_t alignUp(std::size_t offset, std::size_t alignment) {
+  if (alignment <= 1) {
+    return offset;
+  }
+  const std::size_t remainder = offset % alignment;
+  return remainder == 0 ? offset : offset + (alignment - remainder);
+}
+
 /**
  * @brief Type alias for internal storage of ModelOutputs
  * 
@@ -104,12 +121,23 @@ struct InputData {
   std::shared_ptr<triton::client::InferInput> input;
   std::vector<uint8_t> data;
   uint8_t* data_raw;
+  uint8_t* device_data_raw;
   std::size_t data_raw_size;
   InputData() = default;
   InputData(std::shared_ptr<triton::client::InferInput> input, std::vector<uint8_t>&& data)
-      : input{input}, data{data}, data_raw{this->data.data()}, data_raw_size{this->data.size()} {}
+      : input{input},
+        data{data},
+        data_raw{this->data.data()},
+        device_data_raw{nullptr},
+        data_raw_size{this->data.size()} {}
   InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, std::size_t data_raw_size)
-      : input{input}, data{}, data_raw{data_raw}, data_raw_size{data_raw_size} {}
+      : input{input}, data{}, data_raw{data_raw}, device_data_raw{nullptr}, data_raw_size{data_raw_size} {}
+  InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, uint8_t* device_data_raw,
+            std::size_t data_raw_size)
+      : input{input}, data{}, data_raw{data_raw}, device_data_raw{device_data_raw}, data_raw_size{data_raw_size} {}
+
+  bool isHostMappable() const { return data_raw != nullptr; }
+  bool isDeviceBacked() const { return device_data_raw != nullptr; }
 };
 
 struct InputOutputMetaData {
