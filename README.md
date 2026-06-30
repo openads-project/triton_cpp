@@ -1,38 +1,56 @@
-## TRITON CPP
+# triton_cpp
 
 This package is a header-only wrapper around the [official Triton C++ client libraries](https://github.com/triton-inference-server/client) for making interaction with a [Triton inference server](https://github.com/triton-inference-server/server) in C++ much easier.
 
 
-[[_TOC_]]
+### Requirements
+
+- CMake 3.18 or newer
+- A C++17 compiler
+- Eigen3
+- NVIDIA Triton C++ client libraries
+- Optional: CUDA Toolkit for CUDA input shared memory
+
+Set `TRITON_CLIENT_DIR` to the Triton client installation prefix when it is not
+installed at `/opt/tritonclient`.
 
 ### Installation
 
-Current workflow:
+Clone and install the package:
 
-1. Use one of the [rwthika/ros2-triton](https://hub.docker.com/r/rwthika/ros2-triton/) images as base image
+```sh
+git clone https://github.com/openads-project/triton_cpp.git
+cmake -S triton_cpp -B build/triton_cpp -DROS_VERSION=0
+cmake --build build/triton_cpp
+cmake --install build/triton_cpp --prefix /path/to/prefix
+```
 
-1. Add this repo to the .repos file
-    ```yml
-    repositories:
-      triton_cpp:
-        type: git
-        url: https://gitlab.ika.rwth-aachen.de/fb-fi/ml/triton_cpp.git
-        version: main
-    ```
+Installed CMake consumers can use either the original target or the additive
+namespaced target:
 
-1. Add `triton_cpp` to your package.xml and CMakeLists.txt file
-    ```xml
-      <depend>triton_cpp</depend>
-    ```
-    and
-    ```cmake
-    list(APPEND CMAKE_PREFIX_PATH "../../upstream/triton_cpp/cmake") # Current hack needed because the official Triton Lib doesn't export a config.cmake
-    find_package(triton_cpp REQUIRED)
-    ament_target_dependencies(
-      ${TARGET_NAME}
-      triton_cpp
-    )
-    ```
+```cmake
+find_package(triton_cpp 1.1 CONFIG REQUIRED)
+target_link_libraries(my_target PRIVATE triton_cpp::triton_cpp)
+# Existing `target_link_libraries(my_target PRIVATE triton_cpp)` remains supported.
+```
+
+The existing subdirectory workflow also remains supported:
+
+```cmake
+add_subdirectory(triton_cpp)
+target_link_libraries(my_target PRIVATE triton_cpp)
+```
+
+For ROS 2 workspaces, add this repository to the workspace and declare:
+
+```xml
+<depend>triton_cpp</depend>
+```
+
+```cmake
+find_package(triton_cpp REQUIRED)
+ament_target_dependencies(${TARGET_NAME} triton_cpp)
+```
 
 ### Quick start guide
 
@@ -49,7 +67,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 // Query for model info (input & output names, shapes, and datatypes) as human-readable string
 std::cout << ti->getModelInfo() << std::endl;
 
-// Get the number of in/outputs programatically
+// Get the number of inputs and outputs programmatically
 int n_inputs = ti->nInputs();
 int n_outputs = ti->nOutputs();
 
@@ -122,7 +140,7 @@ Transport combinations:
 
 ### Use host shared memory
 
-triton_cpp provides the input and output as serialized Protobuf stream to the server per default.
+By default, triton_cpp provides the input and output as a serialized Protobuf stream to the server.
 If the server and client run on the same machine, using shared memory is much more efficient.
 
 1. If both are running locally, you can skip to step 3. If both are running in docker containers, you need to expose the shared memory between them. For this, start the server with the arguments `--ipc=shareable --shm-size=2gb`, or in `docker-compose.yml`
@@ -149,7 +167,7 @@ If the server and client run on the same machine, using shared memory is much mo
     ```
     and you're done.
 
-1. To test wether SHM is working as expected, go to `/dev/shm` in both containers and observe, while inference is running, if files with data buffers are created there.
+1. To test whether SHM is working as expected, go to `/dev/shm` in both containers and observe whether files containing data buffers are created while inference is running.
 
 Shared-memory regions are registered with Triton using per-client unique names, so multiple independent
 `TritonInterface` instances can use SHM safely at the same time, even when they point to the same Triton server.
@@ -202,15 +220,15 @@ ti->copyInputTensorToDevice("points_xyz", host_points.data(), host_points.size()
 ti->infer();
 ```
 
-For a concrete production example showing `getInputTensorDevice(...)` and
-`copyInputTensorToDevice(...)` together in a real CUDA-input-SHM integration, see
-[`PBODModel.cpp`](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/perception/point_cloud_object_detection/-/blob/387c7bef4e5ec917b920708206afbd179753a033/point_cloud_object_detection/src/PBODModel.cpp#L282).
+`getInputTensorDevice(...)` and `copyInputTensorToDevice(...)` can be combined
+in the same integration, depending on whether individual inputs already reside
+on the GPU or originate in host memory.
 
 ### Variable input size
 
 By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
 
-Set `variable_input_size = true` when the number of elements in an input tensor changes between calls (e.g. a variable-length environment model representation, as seen in [behavior-planning](https://gitlab.ika.rwth-aachen.de/fb-fi/its-modules/planning/behavior_planning)). In this mode the Triton client reallocates the input memory on every `infer()` call, so there is a small per-call overhead.
+Set `variable_input_size = true` when the number of elements in an input tensor changes between calls. In this mode the Triton client reallocates the input memory on every `infer()` call, so there is a small per-call overhead.
 
 ```c++
 std::unique_ptr<triton_cpp::TritonInterface> ti =
@@ -250,4 +268,11 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 
 ### Documentation
 
-TBD. Should be generated with doxygen
+The public headers contain API documentation, and this README documents the
+supported transport modes and usage patterns.
+
+### License
+
+Project-owned code is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
+The NVIDIA-derived shared-memory utility retains its original BSD 3-Clause
+notice; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

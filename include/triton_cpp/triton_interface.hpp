@@ -1,3 +1,6 @@
+// Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+// SPDX-License-Identifier: Apache-2.0
+
 #pragma once
 
 #include <optional>
@@ -39,13 +42,15 @@ class TritonInterface {
    * @param shm Whether to use shared memory for communication with the server
    * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
    */
-  TritonInterface(const std::string& model_name, const std::string& model_version, const std::string& server_url,
-                  bool shm, bool variable_input_size = false, bool retry_connection = false,
-                  double client_timeout_s = 0.0, bool cuda_input_shm = false)
-      : options_{model_name},
-        shm_{shm},
-        variable_input_size_{variable_input_size},
-        cuda_input_shm_requested_{cuda_input_shm} {
+  TritonInterface(const std::string& model_name,
+                  const std::string& model_version,
+                  const std::string& server_url,
+                  bool shm,
+                  bool variable_input_size = false,
+                  bool retry_connection = false,
+                  double client_timeout_s = 0.0,
+                  bool cuda_input_shm = false)
+      : options_{model_name}, shm_{shm}, variable_input_size_{variable_input_size}, cuda_input_shm_requested_{cuda_input_shm} {
     if ((shm || cuda_input_shm) && variable_input_size) {
       throw std::invalid_argument("Variable input size and shared memory cannot be combined");
     }
@@ -82,28 +87,31 @@ class TritonInterface {
       inference::ServerMetadataResponse server_metadata;
       const auto metadata_status = triton_client_->ServerMetadata(&server_metadata);
       if (!metadata_status.IsOk()) {
-        throw std::runtime_error("CUDA input shared memory was requested, but Triton server metadata could not be "
-                                 "queried: " +
-                                 metadata_status.Message());
+        throw std::runtime_error(
+            "CUDA input shared memory was requested, but Triton server metadata could not be "
+            "queried: " +
+            metadata_status.Message());
       } else {
-        const bool server_supports_cuda_shm =
-            std::find(server_metadata.extensions().begin(), server_metadata.extensions().end(), "cuda_shared_memory") !=
-            server_metadata.extensions().end();
+        const bool server_supports_cuda_shm = std::find(server_metadata.extensions().begin(), server_metadata.extensions().end(),
+                                                        "cuda_shared_memory") != server_metadata.extensions().end();
         std::string reason;
         if (!server_supports_cuda_shm) {
-          throw std::runtime_error("CUDA input shared memory was requested, but the Triton server does not advertise "
-                                   "cuda_shared_memory support");
+          throw std::runtime_error(
+              "CUDA input shared memory was requested, but the Triton server does not advertise "
+              "cuda_shared_memory support");
         } else if (!LocalCudaSharedMemorySupported(&reason)) {
-          throw std::runtime_error("CUDA input shared memory was requested, but local CUDA shared memory is not "
-                                   "available: " +
-                                   reason);
+          throw std::runtime_error(
+              "CUDA input shared memory was requested, but local CUDA shared memory is not "
+              "available: " +
+              reason);
         } else {
           cuda_input_shm_enabled_ = true;
         }
       }
 #else
-      throw std::runtime_error("CUDA input shared memory was requested, but triton_cpp was built without CUDA SHM "
-                               "support");
+      throw std::runtime_error(
+          "CUDA input shared memory was requested, but triton_cpp was built without CUDA SHM "
+          "support");
 #endif
     }
   }
@@ -113,9 +121,7 @@ class TritonInterface {
   TritonInterface& operator=(const TritonInterface&) = delete;
   TritonInterface(TritonInterface&&) = delete;
   TritonInterface& operator=(TritonInterface&&) = delete;
-  ~TritonInterface() {
-    releaseSharedMemoryRegistrations();
-  };
+  ~TritonInterface() { releaseSharedMemoryRegistrations(); };
 
   /**
    * @brief Creates all input and output buffers for the model, based on the model metadata
@@ -163,8 +169,7 @@ class TritonInterface {
         try {
           setup_cuda_shm_inputs(input_metadata_);
         } catch (const std::exception& e) {
-          throw std::runtime_error("CUDA input shared memory was requested, but initialization failed: " +
-                                   std::string(e.what()));
+          throw std::runtime_error("CUDA input shared memory was requested, but initialization failed: " + std::string(e.what()));
         }
       } else if (shm_) {
         setup_shm_inputs(input_metadata_);
@@ -283,8 +288,8 @@ class TritonInterface {
    * @return TensorType<T> the requested Eigen::TensorMap
    */
   template <typename T, typename... DimType>
-  TensorType<T, sizeof...(DimType) + 3> getInputTensor(const std::string& name, int64_t dim0, int64_t dim1,
-                                                       int64_t dim2, DimType... dims) {
+  TensorType<T, sizeof...(DimType) + 3> getInputTensor(
+      const std::string& name, int64_t dim0, int64_t dim1, int64_t dim2, DimType... dims) {
     if (variable_input_size_) {
       CreateInputTensor(name, dim0, dim1, dim2, dims...);
     }
@@ -387,8 +392,7 @@ class TritonInterface {
     auto [raw_data_buf, raw_data_size] = getOutputTensor(name);
     if (raw_data_size != rows * sizeof(T)) {
       std::stringstream ss;
-      ss << name << ": rows: " << rows << " sizeof(T): " << sizeof(T) << " raw_data_size: " << raw_data_size
-         << std::endl;
+      ss << name << ": rows: " << rows << " sizeof(T): " << sizeof(T) << " raw_data_size: " << raw_data_size << std::endl;
       throw std::invalid_argument("Invalid output tensor size: " + ss.str());
     }
     return VectorType<const T>{reinterpret_cast<const T*>(raw_data_buf), rows};
@@ -409,8 +413,8 @@ class TritonInterface {
     auto [raw_data_buf, raw_data_size] = getOutputTensor(name);
     if (raw_data_size != rows * cols * sizeof(T)) {
       std::stringstream ss;
-      ss << name << ": rows: " << rows << " cols: " << cols << " sizeof(T): " << sizeof(T)
-         << " raw_data_size: " << raw_data_size << std::endl;
+      ss << name << ": rows: " << rows << " cols: " << cols << " sizeof(T): " << sizeof(T) << " raw_data_size: " << raw_data_size
+         << std::endl;
       throw std::invalid_argument("Invalid output tensor size: " + ss.str());
     }
     return MatrixType<const T>{reinterpret_cast<const T*>(raw_data_buf), rows, cols};
@@ -429,8 +433,8 @@ class TritonInterface {
    * @return TensorType<const T> the requested Eigen::TensorMap
    */
   template <typename T, typename... DimType>
-  TensorType<const T, sizeof...(DimType) + 3> getOutputTensor(const std::string& name, int64_t dim0, int64_t dim1,
-                                                              int64_t dim2, DimType... dims) const {
+  TensorType<const T, sizeof...(DimType) + 3> getOutputTensor(
+      const std::string& name, int64_t dim0, int64_t dim1, int64_t dim2, DimType... dims) const {
     auto [raw_data_buf, raw_data_size] = getOutputTensor(name);
     if (raw_data_size != ((dim0 * dim1 * dim2) * ... * dims) * sizeof(T)) {
       std::stringstream ss;
@@ -439,8 +443,7 @@ class TritonInterface {
       ss << " sizeof(T): " << sizeof(T) << " raw_data_size: " << raw_data_size << std::endl;
       throw std::invalid_argument("Invalid output tensor size: " + ss.str());
     }
-    return TensorType<const T, sizeof...(dims) + 3>{reinterpret_cast<const T*>(raw_data_buf), dim0, dim1, dim2,
-                                                    dims...};
+    return TensorType<const T, sizeof...(dims) + 3>{reinterpret_cast<const T*>(raw_data_buf), dim0, dim1, dim2, dims...};
   }
 
   /**
@@ -524,22 +527,22 @@ class TritonInterface {
     if (cuda_input_shm_enabled_) {
       const auto status = triton_client_->UnregisterCudaSharedMemory(INPUT_SHM_NAME);
       if (!status.IsOk()) {
-        std::cerr << "Failed to unregister Triton CUDA shared memory region '" << INPUT_SHM_NAME
-                  << "': " << status.Message() << std::endl;
+        std::cerr << "Failed to unregister Triton CUDA shared memory region '" << INPUT_SHM_NAME << "': " << status.Message()
+                  << std::endl;
       }
     } else if (shm_) {
       const auto status = triton_client_->UnregisterSystemSharedMemory(INPUT_SHM_NAME);
       if (!status.IsOk()) {
-        std::cerr << "Failed to unregister Triton system shared memory region '" << INPUT_SHM_NAME
-                  << "': " << status.Message() << std::endl;
+        std::cerr << "Failed to unregister Triton system shared memory region '" << INPUT_SHM_NAME << "': " << status.Message()
+                  << std::endl;
       }
     }
 
     if (shm_) {
       const auto status = triton_client_->UnregisterSystemSharedMemory(OUTPUT_SHM_NAME);
       if (!status.IsOk()) {
-        std::cerr << "Failed to unregister Triton system shared memory region '" << OUTPUT_SHM_NAME
-                  << "': " << status.Message() << std::endl;
+        std::cerr << "Failed to unregister Triton system shared memory region '" << OUTPUT_SHM_NAME << "': " << status.Message()
+                  << std::endl;
       }
     }
   }
@@ -595,16 +598,14 @@ class TritonInterface {
     triton::client::InferInput* input_ptr{nullptr};
     triton::client::InferInput::Create(&input_ptr, name, std::vector<int64_t>{dims...},
                                        inference::DataType_Name(modified_meta.datatype).substr(5));
-    inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr),
-                     std::vector<uint8_t>(modified_meta.bytesize, 0)};
+    inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), std::vector<uint8_t>(modified_meta.bytesize, 0)};
     inputs_[name].input->AppendRaw(inputs_[name].data.data(), inputs_[name].data.size());
   }
 
   void setup_standard_inputs(const std::map<std::string, InputOutputMetaData>& metadata) {
     for (const auto& [name, meta] : metadata) {
       triton::client::InferInput* input_ptr{nullptr};
-      triton::client::InferInput::Create(&input_ptr, name, meta.shape,
-                                         inference::DataType_Name(meta.datatype).substr(5));
+      triton::client::InferInput::Create(&input_ptr, name, meta.shape, inference::DataType_Name(meta.datatype).substr(5));
       inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), std::vector<uint8_t>(meta.bytesize, 0)};
       inputs_[name].input->AppendRaw(inputs_[name].data.data(), inputs_[name].data.size());
     }
@@ -633,8 +634,7 @@ class TritonInterface {
       current_offset = alignUp(current_offset, getSharedMemoryAlignment(meta.datatype));
       uint8_t* current_input_shm = input_shm_->getAddress() + current_offset;
       triton::client::InferInput* input_ptr{nullptr};
-      triton::client::InferInput::Create(&input_ptr, name, meta.shape,
-                                         inference::DataType_Name(meta.datatype).substr(5));
+      triton::client::InferInput::Create(&input_ptr, name, meta.shape, inference::DataType_Name(meta.datatype).substr(5));
       inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), current_input_shm, current_shm_size};
       inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
       current_offset += current_shm_size;
@@ -657,10 +657,8 @@ class TritonInterface {
       current_offset = alignUp(current_offset, getSharedMemoryAlignment(meta.datatype));
       uint8_t* current_input_shm = input_cuda_shm_->getDeviceAddress() + current_offset;
       triton::client::InferInput* input_ptr{nullptr};
-      triton::client::InferInput::Create(&input_ptr, name, meta.shape,
-                                         inference::DataType_Name(meta.datatype).substr(5));
-      inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), nullptr, current_input_shm,
-                       current_shm_size};
+      triton::client::InferInput::Create(&input_ptr, name, meta.shape, inference::DataType_Name(meta.datatype).substr(5));
+      inputs_[name] = {std::shared_ptr<triton::client::InferInput>(input_ptr), nullptr, current_input_shm, current_shm_size};
       inputs_[name].input->SetSharedMemory(INPUT_SHM_NAME, current_shm_size, current_input_shm - input_shm_begin);
       current_offset += current_shm_size;
     }
@@ -698,30 +696,30 @@ class TritonInterface {
     }
   }
 
-  triton::client::InferOptions options_;  // Reused Triton inference options for model/version/timeout.
-  bool shm_;  // Enables system shared memory for input and output transport.
-  bool variable_input_size_;  // Defers input tensor creation until the caller provides shapes.
+  triton::client::InferOptions options_;   // Reused Triton inference options for model/version/timeout.
+  bool shm_;                               // Enables system shared memory for input and output transport.
+  bool variable_input_size_;               // Defers input tensor creation until the caller provides shapes.
   bool cuda_input_shm_requested_ = false;  // Records whether CUDA input SHM was explicitly requested.
-  bool cuda_input_shm_enabled_ = false;  // True once CUDA input SHM support has been validated and activated.
+  bool cuda_input_shm_enabled_ = false;    // True once CUDA input SHM support has been validated and activated.
   std::unique_ptr<triton::client::InferenceServerGrpcClient> triton_client_;  // Underlying Triton gRPC client.
-  std::map<std::string, InputOutputMetaData> input_metadata_;  // Declared input tensor shapes and datatypes.
-  std::map<std::string, InputOutputMetaData> output_metadata_;  // Declared output tensor shapes and datatypes.
+  std::map<std::string, InputOutputMetaData> input_metadata_;                 // Declared input tensor shapes and datatypes.
+  std::map<std::string, InputOutputMetaData> output_metadata_;                // Declared output tensor shapes and datatypes.
   std::unique_ptr<SharedMemoryRegion> input_shm_;  // Backing system SHM region for host-visible input tensors.
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
   std::unique_ptr<CudaSharedMemoryRegion> input_cuda_shm_;  // Backing CUDA SHM region for device-resident inputs.
 #endif
-  std::unique_ptr<SharedMemoryRegion> output_shm_;  // Backing system SHM region for output tensors.
-  std::string model_info_;  // Cached human-readable summary of the Triton model interface.
-  std::map<std::string, InputData> inputs_;  // Input tensor handles and their backing buffers keyed by name.
-  ModelOutput outputs_;  // Requested output handles keyed by tensor name.
+  std::unique_ptr<SharedMemoryRegion> output_shm_;        // Backing system SHM region for output tensors.
+  std::string model_info_;                                // Cached human-readable summary of the Triton model interface.
+  std::map<std::string, InputData> inputs_;               // Input tensor handles and their backing buffers keyed by name.
+  ModelOutput outputs_;                                   // Requested output handles keyed by tensor name.
   std::shared_ptr<triton::client::InferResult> results_;  // Most recent Triton inference result.
-  std::vector<triton::client::InferInput*> raw_inputs_;  // Raw input handles passed to Triton infer calls.
+  std::vector<triton::client::InferInput*> raw_inputs_;   // Raw input handles passed to Triton infer calls.
   std::vector<const triton::client::InferRequestedOutput*> raw_outputs_;  // Raw output handles passed to Triton infer calls.
 
-  const std::string RANDOM_INSTANCE_STRING = randstring(10);  // Per-instance suffix to avoid SHM name collisions.
+  const std::string RANDOM_INSTANCE_STRING = randstring(10);                  // Per-instance suffix to avoid SHM name collisions.
   const std::string INPUT_SHM_NAME = "input_data_" + RANDOM_INSTANCE_STRING;  // Triton-visible input SHM region name.
-  const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;  // POSIX key for input system SHM.
-  const std::string OUTPUT_SHM_NAME = "output_data_" + RANDOM_INSTANCE_STRING;  // Triton-visible output SHM region name.
+  const std::string INPUT_SHM_KEY = "/triton_cpp_input_" + RANDOM_INSTANCE_STRING;    // POSIX key for input system SHM.
+  const std::string OUTPUT_SHM_NAME = "output_data_" + RANDOM_INSTANCE_STRING;        // Triton-visible output SHM region name.
   const std::string OUTPUT_SHM_KEY = "/triton_cpp_output_" + RANDOM_INSTANCE_STRING;  // POSIX key for output system SHM.
 };
 

@@ -1,3 +1,6 @@
+// Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+// SPDX-License-Identifier: Apache-2.0
+
 #pragma once
 
 #include <cstdint>
@@ -12,16 +15,14 @@ namespace triton_cpp {
 
 #if defined(TRITON_CPP_ENABLE_CUDA_SHM)
 
-inline void throw_on_cuda_error(cudaError_t status, const char* operation)
-{
+inline void throw_on_cuda_error(cudaError_t status, const char* operation) {
   if (status == cudaSuccess) {
     return;
   }
   throw std::runtime_error(std::string(operation) + " failed: " + cudaGetErrorString(status));
 }
 
-inline bool LocalCudaSharedMemorySupported(std::string* reason = nullptr)
-{
+inline bool LocalCudaSharedMemorySupported(std::string* reason = nullptr) {
   int device_count = 0;
   const auto status = cudaGetDeviceCount(&device_count);
   if (status != cudaSuccess) {
@@ -42,16 +43,13 @@ inline bool LocalCudaSharedMemorySupported(std::string* reason = nullptr)
 
 class CudaSharedMemoryRegion {
  public:
-  CudaSharedMemoryRegion(const std::string& name, std::int64_t size) : name_{name}, size_{size}
-  {
+  CudaSharedMemoryRegion(const std::string& name, std::int64_t size) : name_{name}, size_{size} {
     throw_on_cuda_error(cudaGetDevice(&device_id_), "cudaGetDevice");
-    throw_on_cuda_error(cudaMalloc(reinterpret_cast<void**>(&device_ptr_), static_cast<std::size_t>(size_)),
-                        "cudaMalloc");
+    throw_on_cuda_error(cudaMalloc(reinterpret_cast<void**>(&device_ptr_), static_cast<std::size_t>(size_)), "cudaMalloc");
     throw_on_cuda_error(cudaIpcGetMemHandle(&ipc_handle_, device_ptr_), "cudaIpcGetMemHandle");
   }
 
-  ~CudaSharedMemoryRegion()
-  {
+  ~CudaSharedMemoryRegion() {
     if (device_ptr_ != nullptr) {
       cudaFree(device_ptr_);
     }

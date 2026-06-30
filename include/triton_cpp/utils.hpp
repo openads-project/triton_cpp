@@ -1,3 +1,6 @@
+// Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+// SPDX-License-Identifier: Apache-2.0
+
 #pragma once
 
 #include <algorithm>
@@ -6,7 +9,9 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <numeric>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 

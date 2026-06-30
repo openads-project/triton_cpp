@@ -1,0 +1,26 @@
+# Build outputs
+build/
+install/
+log/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Testing/
+compile_commands.json
+Makefile
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Compiled files
+*.a
+*.so
+*.o
+
+# Editors and local tooling
+.cache/
+.vscode/
+.idea/
+*.swp
+*~
+__pycache__/

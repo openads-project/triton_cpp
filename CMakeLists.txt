@@ -1,127 +1,138 @@
+# Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+# SPDX-License-Identifier: Apache-2.0
+
 cmake_minimum_required(VERSION 3.18)
 
-project(triton_cpp VERSION 0.1.0 LANGUAGES CXX)
-
-# set(CMAKE_CXX_STANDARD 17)
-# set (CMAKE_CXX_STANDARD_REQUIRED True)
-
-find_package(ros_environment QUIET)
-if(ros_environment_FOUND)
-  set(ROS_VERSION $ENV{ROS_VERSION})
-else()
-  set(ROS_VERSION 0)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" TRITON_CPP_VERSION_LINE
+     REGEX "<version>[0-9]+\\.[0-9]+\\.[0-9]+</version>")
+string(REGEX REPLACE ".*<version>([0-9]+\\.[0-9]+\\.[0-9]+)</version>.*" "\\1"
+       TRITON_CPP_VERSION "${TRITON_CPP_VERSION_LINE}")
+if(NOT TRITON_CPP_VERSION)
+  message(FATAL_ERROR "Unable to read triton_cpp version from package.xml")
 endif()
 
-list(APPEND CMAKE_PREFIX_PATH cmake)
-find_package(Triton REQUIRED)
+project(triton_cpp VERSION "${TRITON_CPP_VERSION}" LANGUAGES CXX)
+
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+if(NOT DEFINED ROS_VERSION)
+  find_package(ros_environment QUIET)
+  if(ros_environment_FOUND)
+    set(ROS_VERSION "$ENV{ROS_VERSION}")
+  else()
+    set(ROS_VERSION 0)
+  endif()
+endif()
+
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+find_package(Triton REQUIRED MODULE)
 find_package(CUDAToolkit QUIET)
 
-# === ROS2 / AMENT =============================================================
-if(${ROS_VERSION} EQUAL 2)
+set(TRITON_CPP_CONFIG_WITH_CUDA OFF)
 
-  # find dependencies
+add_library(triton_cpp INTERFACE)
+add_library(triton_cpp::triton_cpp ALIAS triton_cpp)
+
+target_compile_features(triton_cpp INTERFACE cxx_std_17)
+target_include_directories(triton_cpp INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_link_libraries(triton_cpp INTERFACE Triton::Client)
+
+if(CUDAToolkit_FOUND)
+  set(TRITON_CPP_CONFIG_WITH_CUDA ON)
+  target_link_libraries(triton_cpp INTERFACE CUDA::cudart)
+  target_compile_definitions(triton_cpp INTERFACE TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
+endif()
+
+install(DIRECTORY include/triton_cpp DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(TARGETS triton_cpp
+  EXPORT triton_cppTargets
+  INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}"
+)
+
+# === ROS2 / AMENT =============================================================
+if(ROS_VERSION EQUAL 2)
   find_package(ament_cmake REQUIRED)
 
-  add_library(${PROJECT_NAME} INTERFACE)
-
-  target_include_directories(${PROJECT_NAME} INTERFACE
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-    ${Triton_INCLUDE_DIRS}
-  )
-  target_link_libraries(${PROJECT_NAME} INTERFACE
-    ${Triton_LIBRARIES}
-  )
+  ament_export_targets(triton_cppTargets HAS_LIBRARY_TARGET)
   if(CUDAToolkit_FOUND)
-    target_link_libraries(${PROJECT_NAME} INTERFACE CUDA::cudart)
-    target_compile_definitions(${PROJECT_NAME} INTERFACE TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
-    ament_export_dependencies(CUDAToolkit)
+    # Preserve the legacy variables exported to ament consumers.
     ament_export_definitions(TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
   endif()
 
-  ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET)
-  ament_export_dependencies(Triton)
-
-  install(
-    DIRECTORY include/
-    DESTINATION include
-  )
-
-  install(TARGETS ${PROJECT_NAME}
-    EXPORT ${PROJECT_NAME}Targets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-    INCLUDES DESTINATION include
+  install(FILES cmake/FindTriton.cmake
+    DESTINATION share/${PROJECT_NAME}/cmake
   )
 
   if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)
-    # the following line skips the linter which checks for copyrights
-    # comment the line when a copyright and license is added to all source files
-    set(ament_cmake_copyright_FOUND TRUE)
-    # the following line skips cpplint (only works in a git repo)
-    # comment the line when this package is in a git repo and when
-    # a copyright and license is added to all source files
-    set(ament_cmake_cpplint_FOUND TRUE)
     ament_lint_auto_find_test_dependencies()
   endif()
 
-  ament_package()
+  ament_package(
+    CONFIG_EXTRAS cmake/triton_cppDependencies.cmake.in
+    CONFIG_EXTRAS_POST cmake/triton_cppAliases.cmake
+  )
 
 # === ROS1 (CATKIN) ============================================================
-elseif(${ROS_VERSION} EQUAL 1)
-  #TODO: Implement (or not?)
-# === STANDARD CMAKE ===========================================================
-# https://stackoverflow.com/a/49143782
-else()
-  
-  add_library(${PROJECT_NAME} INTERFACE)
-  target_include_directories(${PROJECT_NAME} INTERFACE
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-    ${TRITON_INCLUDE_DIRS}
-  )
-  target_link_libraries(${PROJECT_NAME} INTERFACE
-    ${TRITON_LIBRARIES}
-  )
-  if(CUDAToolkit_FOUND)
-    target_link_libraries(${PROJECT_NAME} INTERFACE CUDA::cudart)
-    target_compile_definitions(${PROJECT_NAME} INTERFACE TRITON_CPP_ENABLE_CUDA_SHM TRITON_ENABLE_GPU)
-  endif()
-  
-  include(CMakePackageConfigHelpers)
-  write_basic_package_version_file(
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    VERSION 1.0.1
-    COMPATIBILITY AnyNewerVersion
-  )
-  
-  install(TARGETS ${PROJECT_NAME}
-    EXPORT ${PROJECT_NAME}Targets
-    LIBRARY DESTINATION lib COMPONENT Runtime
-    ARCHIVE DESTINATION lib COMPONENT Development
-    RUNTIME DESTINATION bin COMPONENT Runtime
-    PUBLIC_HEADER DESTINATION include COMPONENT Development
-    BUNDLE DESTINATION bin COMPONENT Runtime
-  )
-  
-  configure_package_config_file(
-    "${PROJECT_SOURCE_DIR}/cmake/${PROJECT_NAME}Config.cmake.in"
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-    INSTALL_DESTINATION lib/cmake/${PROJECT_NAME}
-  )
-  
-  install(EXPORT ${PROJECT_NAME}Targets DESTINATION lib/cmake/${PROJECT_NAME})
-  install(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-                "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-          DESTINATION lib/cmake/${PROJECT_NAME})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/ DESTINATION include)
-  
-  option(BUILD_TESTING "" OFF)
-  include(CTest)
-  if((CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME OR ${PROJECT_NAME}_BUILD_TESTING) AND BUILD_TESTING)
-    add_subdirectory(tests)
-  endif()
+elseif(ROS_VERSION EQUAL 1)
+  # Preserve the historical behavior: ROS 1 configures successfully but does
+  # not define or install a triton_cpp target.
+  message(STATUS "ROS 1 target generation is not implemented")
 
+# === STANDARD CMAKE ===========================================================
+else()
+  set(TRITON_CPP_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/triton_cpp"
+      CACHE STRING "Install directory for triton_cpp CMake package files")
+
+  configure_package_config_file(
+    cmake/triton_cppConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppConfig.cmake"
+    INSTALL_DESTINATION "${TRITON_CPP_INSTALL_CMAKEDIR}"
+  )
+  configure_file(
+    cmake/triton_cppDependencies.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppDependencies.cmake"
+    @ONLY
+  )
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion
+  )
+
+  install(EXPORT triton_cppTargets
+    FILE triton_cppTargets.cmake
+    DESTINATION "${TRITON_CPP_INSTALL_CMAKEDIR}"
+  )
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/triton_cppDependencies.cmake"
+    cmake/triton_cppAliases.cmake
+    cmake/FindTriton.cmake
+    DESTINATION "${TRITON_CPP_INSTALL_CMAKEDIR}"
+  )
+  install(FILES package.xml
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}"
+  )
+
+  option(BUILD_TESTING "Build triton_cpp tests" OFF)
+  include(CTest)
+  if(BUILD_TESTING)
+    add_test(
+      NAME triton_cpp_installed_package
+      COMMAND "${CMAKE_COMMAND}"
+              "-DTRITON_CPP_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+              "-DTRITON_CPP_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/test-prefix"
+              "-DTRITON_CPP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+              -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_installed_package.cmake"
+    )
+  endif()
 endif()

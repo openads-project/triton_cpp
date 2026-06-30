@@ -1,0 +1,12 @@
+# Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+# SPDX-License-Identifier: Apache-2.0
+
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 130
+IncludeBlocks: Preserve
+ReflowComments: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+BinPackParameters: false

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-checks:
+    name: Repository checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Install check tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Check source license headers
+        run: python3 scripts/check_license_headers.py
+      - name: Check C++ formatting
+        run: |
+          clang-format-18 --dry-run --Werror \
+            include/triton_cpp/cuda_shm.hpp \
+            include/triton_cpp/shm.hpp \
+            include/triton_cpp/triton_interface.hpp \
+            include/triton_cpp/types.hpp \
+            include/triton_cpp/utils.hpp \
+            tests/cmake_package/main.cpp
+
+  standalone-cmake:
+    runs-on: ubuntu-24.04
+    container: rwthika/ros2-triton:jazzy
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: ROS_VERSION=0 cmake -S . -B build/standalone -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build/standalone
+      - name: Test installed package
+        run: ctest --test-dir build/standalone --output-on-failure
+
+  ros2-jazzy:
+    runs-on: ubuntu-24.04
+    container: rwthika/ros2-triton:jazzy
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build package
+        run: colcon build --merge-install --base-paths . --cmake-args -DBUILD_TESTING=ON
+      - name: Run package tests
+        run: |
+          colcon test --event-handlers console_cohesion+
+          colcon test-result --verbose
+      - name: Verify installed CMake targets
+        run: |
+          cmake -S tests/cmake_package -B build/ros-consumer -DCMAKE_PREFIX_PATH="$PWD/install"
+          cmake --build build/ros-consumer
+          ./build/ros-consumer/triton_cpp_bare_target_test
+          ./build/ros-consumer/triton_cpp_namespaced_target_test

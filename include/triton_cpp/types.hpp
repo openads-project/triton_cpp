@@ -1,6 +1,18 @@
+// Copyright Institute for Automotive Engineering (ika), RWTH Aachen University
+// SPDX-License-Identifier: Apache-2.0
+
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <variant>
+#include <vector>
 
 #include <Eigen/Dense>
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
@@ -9,7 +21,6 @@
 
 #include "triton_cpp/utils.hpp"
 
-
 namespace triton_cpp {
 /**
  * @brief Helper type template for Eigen::Vector compatible with Triton
@@ -17,10 +28,9 @@ namespace triton_cpp {
  * @tparam T Scalar data type. If T is const, the underlying Vector will be const
  */
 template <typename T>
-using VectorType = typename std::conditional_t<
-    std::is_const_v<T>,
-    Eigen::Map<const Eigen::VectorX<typename std::remove_const_t<T>>>,
-    Eigen::Map<Eigen::VectorX<T>>>;
+using VectorType = typename std::conditional_t<std::is_const_v<T>,
+                                               Eigen::Map<const Eigen::VectorX<typename std::remove_const_t<T>>>,
+                                               Eigen::Map<Eigen::VectorX<T>>>;
 
 /**
  * @brief Helper type template for Eigen::Matrix compatible with Triton
@@ -36,7 +46,8 @@ using MatrixType = typename std::conditional_t<
 /**
  * @brief Helper type template for Eigen::Tensor compatible with Triton
  * 
- * Note that Eigen::Tensor is officially unsopported in Eigen3, but seems to work well
+ * Note that Eigen::Tensor is officially unsupported in Eigen3, but works for
+ * the mappings used here.
  * 
  * @tparam T Scalar data type. If T is const, the underlying Tensor will be const
  */
@@ -49,7 +60,8 @@ using TensorType = typename std::conditional_t<
 /**
  * @brief Type alias for all possible C++ scalar types that the triton server supports
  * 
- * TODO: Check, what should happen to String and float16. Make sure that bool works as intended
+ * String and FP16 values are not represented because they require dedicated
+ * storage and conversion handling.
  */
 using TritonDataType =
     std::variant<bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, double>;
@@ -125,14 +137,12 @@ struct InputData {
   std::size_t data_raw_size;
   InputData() = default;
   InputData(std::shared_ptr<triton::client::InferInput> input, std::vector<uint8_t>&& data)
-      : input{input},
-        data{data},
-        data_raw{this->data.data()},
-        device_data_raw{nullptr},
-        data_raw_size{this->data.size()} {}
+      : input{input}, data{data}, data_raw{this->data.data()}, device_data_raw{nullptr}, data_raw_size{this->data.size()} {}
   InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, std::size_t data_raw_size)
       : input{input}, data{}, data_raw{data_raw}, device_data_raw{nullptr}, data_raw_size{data_raw_size} {}
-  InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, uint8_t* device_data_raw,
+  InputData(std::shared_ptr<triton::client::InferInput> input,
+            uint8_t* data_raw,
+            uint8_t* device_data_raw,
             std::size_t data_raw_size)
       : input{input}, data{}, data_raw{data_raw}, device_data_raw{device_data_raw}, data_raw_size{data_raw_size} {}
 
