@@ -56,7 +56,7 @@ install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md
   DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}"
 )
 
-# === ROS2 / AMENT =============================================================
+# === ROS 2 / AMENT ============================================================
 if(ROS_VERSION EQUAL 2)
   find_package(ament_cmake REQUIRED)
 
@@ -80,14 +80,8 @@ if(ROS_VERSION EQUAL 2)
     CONFIG_EXTRAS_POST cmake/triton_cppAliases.cmake
   )
 
-# === ROS1 (CATKIN) ============================================================
-elseif(ROS_VERSION EQUAL 1)
-  # Preserve the historical behavior: ROS 1 configures successfully but does
-  # not define or install a triton_cpp target.
-  message(STATUS "ROS 1 target generation is not implemented")
-
 # === STANDARD CMAKE ===========================================================
-else()
+elseif(ROS_VERSION EQUAL 0)
   set(TRITON_CPP_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/triton_cpp"
       CACHE STRING "Install directory for triton_cpp CMake package files")
 
@@ -135,4 +129,6 @@ else()
               -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_installed_package.cmake"
     )
   endif()
+else()
+  message(FATAL_ERROR "triton_cpp supports ROS 2 or standalone CMake builds; ROS_VERSION=${ROS_VERSION} is unsupported")
 endif()
