@@ -3,6 +3,7 @@
 
 #include "triton_cpp/types.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -36,12 +37,13 @@ void supportedDatatypesMapToTheirZeroValuedCppTypes() {
   requireZero<std::int64_t>(inference::DataType::TYPE_INT64);
   requireZero<float>(inference::DataType::TYPE_FP32);
   requireZero<double>(inference::DataType::TYPE_FP64);
+  requireZero<Eigen::half>(inference::DataType::TYPE_FP16);
 }
 
 void unsupportedDatatypesAreRejected() {
   bool unsupported_failed = false;
   try {
-    static_cast<void>(triton_cpp::getZero(inference::DataType::TYPE_FP16));
+    static_cast<void>(triton_cpp::getZero(inference::DataType::TYPE_STRING));
   } catch (const std::invalid_argument&) {
     unsupported_failed = true;
   }
@@ -59,6 +61,23 @@ void offsetsAreAlignedForSharedMemory() {
 void tensorByteSizeIncludesShapeAndElementSize() {
   const triton_cpp::InputOutputMetaData fp32{{2, 3, 4}, inference::DataType::TYPE_FP32};
   require(fp32.bytesize == 24 * static_cast<std::int64_t>(sizeof(float)), "FP32 byte size is incorrect");
+
+  const triton_cpp::InputOutputMetaData fp16{{2, 3, 4}, inference::DataType::TYPE_FP16};
+  require(fp16.bytesize == 24 * 2, "FP16 byte size is incorrect");
+}
+
+void fp16UsesBinary16StorageAndEigenViews() {
+  static_assert(sizeof(Eigen::half) == 2, "Eigen::half must use Triton's two-byte FP16 representation");
+
+  // Keep the established public variant indexes stable when adding FP16.
+  require(triton_cpp::TritonDataType{float{}}.index() == 9, "FP32 variant index changed");
+  require(triton_cpp::TritonDataType{double{}}.index() == 10, "FP64 variant index changed");
+  require(triton_cpp::TritonDataType{Eigen::half{}}.index() == 11, "FP16 variant index is unexpected");
+
+  std::array<Eigen::half, 2> storage{Eigen::half{1.5f}, Eigen::half{-2.0f}};
+  triton_cpp::VectorType<Eigen::half> view{storage.data(), storage.size()};
+  require(static_cast<float>(view(0)) == 1.5f, "FP16 Eigen view changed the first value");
+  require(static_cast<float>(view(1)) == -2.0f, "FP16 Eigen view changed the second value");
 }
 
 void dynamicDimensionsContributeOneElement() {
@@ -81,6 +100,7 @@ int main() {
   unsupportedDatatypesAreRejected();
   offsetsAreAlignedForSharedMemory();
   tensorByteSizeIncludesShapeAndElementSize();
+  fp16UsesBinary16StorageAndEigenViews();
   dynamicDimensionsContributeOneElement();
   emptyShapeRepresentsOneScalar();
 }

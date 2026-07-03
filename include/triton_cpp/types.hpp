@@ -60,11 +60,14 @@ using TensorType = typename std::conditional_t<
 /**
  * @brief Type alias for all possible C++ scalar types that the triton server supports
  * 
- * String and FP16 values are not represented because they require dedicated
- * storage and conversion handling.
+ * String values are not represented because they require dedicated storage
+ * and conversion handling.
+ *
+ * Eigen::half is appended to preserve the variant indexes of the previously
+ * supported alternatives.
  */
 using TritonDataType =
-    std::variant<bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, double>;
+    std::variant<bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, double, Eigen::half>;
 
 /**
  * @brief Get a zero value in the correct C++ type, given a Triton datatype
@@ -93,6 +96,8 @@ inline TritonDataType getZero(inference::DataType type) {
       return static_cast<int32_t>(0);
     case inference::DataType::TYPE_INT64:
       return static_cast<int64_t>(0);
+    case inference::DataType::TYPE_FP16:
+      return Eigen::half{0.0f};
     case inference::DataType::TYPE_FP32:
       return static_cast<float>(0);
     case inference::DataType::TYPE_FP64:
