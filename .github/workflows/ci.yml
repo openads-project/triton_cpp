@@ -29,7 +29,10 @@ jobs:
             include/triton_cpp/triton_interface.hpp \
             include/triton_cpp/types.hpp \
             include/triton_cpp/utils.hpp \
-            tests/cmake_package/main.cpp
+            tests/cmake_package/main.cpp \
+            tests/input_data.cpp \
+            tests/shared_memory_region.cpp \
+            tests/types.cpp
 
   standalone-cmake:
     runs-on: ubuntu-24.04
