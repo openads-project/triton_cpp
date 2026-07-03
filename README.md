@@ -268,11 +268,17 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 
 ### Documentation
 
-The public headers contain API documentation, and this README documents the
-supported transport modes and usage patterns.
+Implementation details are found in the [Source Code Documentation](https://openads-project.github.io/triton_cpp).
 
-### License
+## ⚖️ Licensing
 
-Project-owned code is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
-The NVIDIA-derived shared-memory utility retains its original BSD 3-Clause
-notice; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The source code in this repository is licensed under Apache-2.0, see [LICENSE](LICENSE). Container images provided by this repository may contain third-party software shipped with their own license terms.
+
+## 🙏 Acknowledgements
+
+Development and maintenance of this repository are supported by the following projects. We acknowledge the funding of the respective institutions.
+
+| Project | Funding Institution | Grant Number |
+| --- | --- | --- |
+| [AIGGREGATE](https://aiggregate.eu/) | 🇪🇺 European Union | 101202457 |
+| [autotech.agil](https://www.autotechagil.de/) | 🇩🇪 Federal Ministry for Research, Technology and Space (BMFTR) | 01IS22088A |

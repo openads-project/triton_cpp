@@ -13,12 +13,7 @@ APACHE_HEADER = (
     "Copyright Institute for Automotive Engineering (ika), RWTH Aachen University",
     "SPDX-License-Identifier: Apache-2.0",
 )
-FILE_LICENSES = {
-    Path("include/triton_cpp/shm_utils.hpp"): (
-        "Copyright (c) 2020-2021, NVIDIA CORPORATION. All rights reserved.",
-        "SPDX-License-Identifier: BSD-3-Clause",
-    )
-}
+FILE_LICENSES: dict[Path, tuple[str, str]] = {}
 COMMENT_PREFIXES = {
     ".c": "//",
     ".cc": "//",
@@ -41,7 +36,11 @@ def source_files(repository: Path) -> list[Path]:
         capture_output=True,
     )
     paths = result.stdout.decode().split("\0")
-    return sorted(repository / path for path in paths if path and Path(path).suffix in COMMENT_PREFIXES)
+    return sorted(
+        repository / path
+        for path in paths
+        if path and Path(path).suffix in COMMENT_PREFIXES and (repository / path).is_file()
+    )
 
 
 def main() -> int:
