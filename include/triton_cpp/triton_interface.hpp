@@ -21,26 +21,33 @@
 
 #include "triton_cpp/cuda_shm.hpp"
 #include "triton_cpp/shm.hpp"
-#include "triton_cpp/shm_utils.hpp"
 #include "triton_cpp/types.hpp"
 #include "triton_cpp/utils.hpp"
 
 namespace triton_cpp {
 
 /**
- * @brief Main class of this library, providing an interface to the Triton server
- * 
+ * @brief Synchronous, typed interface to one model served by Triton.
+ *
+ * The interface owns the Triton gRPC client, model input/output descriptors,
+ * and optional system or CUDA shared-memory registrations. Call initInOutputs()
+ * before accessing tensors or performing inference.
  */
 class TritonInterface {
  public:
   /**
-   * @brief Construct a new Triton Interface object
-   * 
-   * @param model_name Name of the model to use
-   * @param model_version Version of the model to use
-   * @param server_url URL of the Triton server
-   * @param shm Whether to use shared memory for communication with the server
-   * @param variable_input_size Whether the input size is variable. If true, Triton will reallocate memory for the input tensors on each call, so false is recommended.
+   * @brief Connect to Triton and query metadata for one model.
+   *
+   * @param model_name Name of the served model.
+   * @param model_version Model version, such as `"1"`.
+   * @param server_url Triton gRPC endpoint, such as `"127.0.0.1:8001"`.
+   * @param shm Use POSIX shared memory for inputs and outputs.
+   * @param variable_input_size Recreate standard input buffers when callers request new shapes.
+   * @param retry_connection Retry client creation and model metadata queries once per second.
+   * @param client_timeout_s Per-inference client timeout in seconds; zero disables the timeout.
+   * @param cuda_input_shm Use CUDA IPC shared memory for inputs. Outputs still follow @p shm.
+   * @throws std::invalid_argument for incompatible options or a negative timeout.
+   * @throws std::runtime_error if the server connection, model query, or requested CUDA support fails.
    */
   TritonInterface(const std::string& model_name,
                   const std::string& model_version,
@@ -116,12 +123,19 @@ class TritonInterface {
     }
   }
 
-  // Rule of 5: Disable copy and move operations
+  /** @name Lifetime */
+  ///@{
+  /** @brief Copy construction is disabled because the interface owns registrations and buffers. */
   TritonInterface(const TritonInterface&) = delete;
+  /** @brief Copy assignment is disabled because the interface owns registrations and buffers. */
   TritonInterface& operator=(const TritonInterface&) = delete;
+  /** @brief Move construction is disabled to keep registered buffer addresses stable. */
   TritonInterface(TritonInterface&&) = delete;
+  /** @brief Move assignment is disabled to keep registered buffer addresses stable. */
   TritonInterface& operator=(TritonInterface&&) = delete;
+  /** @brief Unregister shared-memory regions owned by this interface. */
   ~TritonInterface() { releaseSharedMemoryRegistrations(); };
+  ///@}
 
   /**
    * @brief Creates all input and output buffers for the model, based on the model metadata
@@ -200,10 +214,10 @@ class TritonInterface {
   }
 
   /**
-   * @brief Perform the inference on the Triton server, with the input currently present in the buffers.
-   * 
-   * The result object will be stored in a shared pointer, which will be valid until the next call to this function.
-   * 
+   * @brief Run synchronous inference with the data currently stored in the input buffers.
+   *
+   * Returned output views remain valid until the next call to infer().
+   * @throws std::runtime_error if Triton rejects or fails the inference request.
    */
   void infer() {
     if (variable_input_size_) {
@@ -447,10 +461,10 @@ class TritonInterface {
   }
 
   /**
-   * @brief Get the raw output buffer, as C-array + its size
-   * 
-   * @param name name of the output
-   * @return std::pair<const uint8_t*, std::size_t> 
+   * @brief Get the raw output buffer and its size.
+   * @param name Name of the output tensor.
+   * @return Pointer to immutable output data and its size in bytes.
+   * @throws std::out_of_range if @p name is unknown when shared memory is enabled.
    */
   std::pair<const uint8_t*, std::size_t> getOutputTensor(const std::string& name) const {
     const uint8_t* raw_data_buf{nullptr};

@@ -8,12 +8,8 @@
 
 namespace triton_cpp {
 
-class SharedMemoryRegion {
-  std::string shm_key_;
-  std::uint8_t* shm_addr_;
-  int shm_fd_;
-  std::int64_t shm_size_;
-
+/** Owns one mapped POSIX shared-memory object. */
+class PosixSharedMemory {
  public:
   SharedMemoryRegion(const std::string& key, std::int64_t size) : shm_key_{key}, shm_size_{size} {
     fail_on_error(triton::client::CreateSharedMemoryRegion(shm_key_, shm_size_, &shm_fd_), "CreateSharedMemoryRegion");

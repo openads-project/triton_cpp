@@ -102,15 +102,33 @@ inline TritonDataType getZero(inference::DataType type) {
   }
 }
 
+/**
+ * @brief Return the natural C++ alignment for a Triton datatype.
+ * @param type Triton datatype to inspect.
+ * @return Alignment requirement in bytes.
+ * @throws std::invalid_argument if @p type is unsupported.
+ */
 inline std::size_t getAlignment(inference::DataType type) {
   return std::visit([](auto&& arg) { return alignof(std::decay_t<decltype(arg)>); }, getZero(type));
 }
 
+/**
+ * @brief Return the alignment used when packing tensors into shared memory.
+ * @param type Triton datatype to inspect.
+ * @return Alignment in bytes, with a minimum of eight bytes.
+ * @throws std::invalid_argument if @p type is unsupported.
+ */
 inline std::size_t getSharedMemoryAlignment(inference::DataType type) {
   constexpr std::size_t kMinSharedMemoryAlignment = 8;
   return std::max(getAlignment(type), kMinSharedMemoryAlignment);
 }
 
+/**
+ * @brief Round an offset up to an alignment boundary.
+ * @param offset Original byte offset.
+ * @param alignment Required alignment in bytes. Values zero and one leave the offset unchanged.
+ * @return Smallest aligned offset greater than or equal to @p offset.
+ */
 inline std::size_t alignUp(std::size_t offset, std::size_t alignment) {
   if (alignment <= 1) {
     return offset;
@@ -120,42 +138,84 @@ inline std::size_t alignUp(std::size_t offset, std::size_t alignment) {
 }
 
 /**
- * @brief Type alias for internal storage of ModelOutputs
- * 
+ * @brief Map model output names to Triton requested-output objects.
  */
 using ModelOutput = std::map<std::string, std::shared_ptr<triton::client::InferRequestedOutput>>;
 
 /**
- * @brief Helper struct to couple a Triton input with its underlying data buffer
- * 
+ * @brief Couple a Triton input descriptor with its backing storage.
+ *
+ * Storage may be an owned host vector, externally owned host shared memory, or
+ * CUDA device shared memory. Pointer validity follows the lifetime of the
+ * corresponding backing allocation.
  */
 struct InputData {
+  /** Triton input descriptor. */
   std::shared_ptr<triton::client::InferInput> input;
+  /** Owned storage used by standard host inputs. */
   std::vector<uint8_t> data;
+  /** Host-mappable buffer address, or nullptr for device-only storage. */
   uint8_t* data_raw;
+  /** CUDA device buffer address, or nullptr for host storage. */
   uint8_t* device_data_raw;
+  /** Buffer size in bytes. */
   std::size_t data_raw_size;
+
+  /** @brief Construct an empty input-storage descriptor. */
   InputData() = default;
+
+  /**
+   * @brief Construct an input backed by an owned host vector.
+   * @param input Triton input descriptor.
+   * @param data Host buffer used to initialize this object's owned storage.
+   */
   InputData(std::shared_ptr<triton::client::InferInput> input, std::vector<uint8_t>&& data)
       : input{input}, data{data}, data_raw{this->data.data()}, device_data_raw{nullptr}, data_raw_size{this->data.size()} {}
+
+  /**
+   * @brief Construct an input backed by externally owned host memory.
+   * @param input Triton input descriptor.
+   * @param data_raw Host buffer address.
+   * @param data_raw_size Buffer size in bytes.
+   */
   InputData(std::shared_ptr<triton::client::InferInput> input, uint8_t* data_raw, std::size_t data_raw_size)
       : input{input}, data{}, data_raw{data_raw}, device_data_raw{nullptr}, data_raw_size{data_raw_size} {}
+
+  /**
+   * @brief Construct an input backed by CUDA shared memory.
+   * @param input Triton input descriptor.
+   * @param data_raw Optional host address; normally nullptr for CUDA-only storage.
+   * @param device_data_raw CUDA device address.
+   * @param data_raw_size Buffer size in bytes.
+   */
   InputData(std::shared_ptr<triton::client::InferInput> input,
             uint8_t* data_raw,
             uint8_t* device_data_raw,
             std::size_t data_raw_size)
       : input{input}, data{}, data_raw{data_raw}, device_data_raw{device_data_raw}, data_raw_size{data_raw_size} {}
 
+  /** @return true when the input exposes a host-accessible address. */
   bool isHostMappable() const { return data_raw != nullptr; }
+  /** @return true when the input is backed by a CUDA device allocation. */
   bool isDeviceBacked() const { return device_data_raw != nullptr; }
 };
 
+/** @brief Shape, datatype, and byte-size metadata for one model tensor. */
 struct InputOutputMetaData {
+  /** Tensor dimensions reported by Triton or supplied by the caller. */
   const std::vector<int64_t> shape;
+  /** Triton tensor datatype. */
   const inference::DataType datatype;
+  /** Total tensor buffer size in bytes. */
   const int64_t bytesize;
 
  public:
+  /**
+   * @brief Build metadata and calculate the required tensor byte size.
+   * @param shape Tensor dimensions. Dynamic dimensions contribute one to the size.
+   * @param datatype Triton tensor datatype.
+   * @throws std::invalid_argument if @p datatype is unsupported.
+   */
   InputOutputMetaData(const std::vector<int64_t>& shape, const inference::DataType& datatype)
       : shape{shape},
         datatype{datatype},

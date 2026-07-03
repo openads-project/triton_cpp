@@ -1,0 +1,53 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main, openads]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  doxygen:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen
+
+      - name: Check out Doxygen Awesome
+        uses: actions/checkout@v5
+        with:
+          repository: jothepro/doxygen-awesome-css
+          ref: v2.4.1
+          path: doxygen-awesome-css
+
+      - name: Build documentation
+        env:
+          DOXYGEN_PROJECT_NUMBER: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: doxygen Doxyfile
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload documentation
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/html
+
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v4
