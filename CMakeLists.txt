@@ -120,6 +120,19 @@ elseif(ROS_VERSION EQUAL 0)
   option(BUILD_TESTING "Build triton_cpp tests" OFF)
   include(CTest)
   if(BUILD_TESTING)
+    add_executable(triton_cpp_shared_memory_test tests/shared_memory_region.cpp)
+    target_link_libraries(triton_cpp_shared_memory_test PRIVATE triton_cpp)
+    add_test(NAME triton_cpp_shared_memory COMMAND triton_cpp_shared_memory_test)
+
+    add_executable(triton_cpp_input_data_test tests/input_data.cpp)
+    target_link_libraries(triton_cpp_input_data_test PRIVATE triton_cpp)
+    add_test(NAME triton_cpp_input_data COMMAND triton_cpp_input_data_test)
+
+    add_executable(triton_cpp_types_test tests/types.cpp)
+    target_link_libraries(triton_cpp_types_test PRIVATE triton_cpp)
+    target_compile_options(triton_cpp_types_test PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Werror=narrowing>)
+    add_test(NAME triton_cpp_types COMMAND triton_cpp_types_test)
+
     add_test(
       NAME triton_cpp_installed_package
       COMMAND "${CMAKE_COMMAND}"
