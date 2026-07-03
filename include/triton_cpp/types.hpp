@@ -155,14 +155,70 @@ struct InputData {
   /** Owned storage used by standard host inputs. */
   std::vector<uint8_t> data;
   /** Host-mappable buffer address, or nullptr for device-only storage. */
-  uint8_t* data_raw;
+  uint8_t* data_raw{nullptr};
   /** CUDA device buffer address, or nullptr for host storage. */
-  uint8_t* device_data_raw;
+  uint8_t* device_data_raw{nullptr};
   /** Buffer size in bytes. */
-  std::size_t data_raw_size;
+  std::size_t data_raw_size{0};
 
   /** @brief Construct an empty input-storage descriptor. */
   InputData() = default;
+
+  /**
+   * @brief Copy an input descriptor and rebind pointers into copied owned storage.
+   * @param other Descriptor to copy.
+   */
+  InputData(const InputData& other)
+      : input{other.input},
+        data{other.data},
+        data_raw{other.ownsHostBuffer() ? data.data() : other.data_raw},
+        device_data_raw{other.device_data_raw},
+        data_raw_size{other.data_raw_size} {}
+
+  /**
+   * @brief Move an input descriptor and preserve its storage association.
+   * @param other Descriptor to move from.
+   */
+  InputData(InputData&& other) noexcept {
+    const bool owns_host_buffer = other.ownsHostBuffer();
+    input = std::move(other.input);
+    data = std::move(other.data);
+    data_raw = owns_host_buffer ? data.data() : other.data_raw;
+    device_data_raw = other.device_data_raw;
+    data_raw_size = other.data_raw_size;
+    other.data_raw = nullptr;
+    other.device_data_raw = nullptr;
+    other.data_raw_size = 0;
+  }
+
+  /** @brief Copy an input descriptor while preserving storage ownership. */
+  InputData& operator=(const InputData& other) {
+    if (this != &other) {
+      const bool owns_host_buffer = other.ownsHostBuffer();
+      input = other.input;
+      data = other.data;
+      data_raw = owns_host_buffer ? data.data() : other.data_raw;
+      device_data_raw = other.device_data_raw;
+      data_raw_size = other.data_raw_size;
+    }
+    return *this;
+  }
+
+  /** @brief Move an input descriptor while preserving storage ownership. */
+  InputData& operator=(InputData&& other) noexcept {
+    if (this != &other) {
+      const bool owns_host_buffer = other.ownsHostBuffer();
+      input = std::move(other.input);
+      data = std::move(other.data);
+      data_raw = owns_host_buffer ? data.data() : other.data_raw;
+      device_data_raw = other.device_data_raw;
+      data_raw_size = other.data_raw_size;
+      other.data_raw = nullptr;
+      other.device_data_raw = nullptr;
+      other.data_raw_size = 0;
+    }
+    return *this;
+  }
 
   /**
    * @brief Construct an input backed by an owned host vector.
@@ -170,7 +226,11 @@ struct InputData {
    * @param data Host buffer used to initialize this object's owned storage.
    */
   InputData(std::shared_ptr<triton::client::InferInput> input, std::vector<uint8_t>&& data)
-      : input{input}, data{data}, data_raw{this->data.data()}, device_data_raw{nullptr}, data_raw_size{this->data.size()} {}
+      : input{std::move(input)},
+        data{std::move(data)},
+        data_raw{this->data.data()},
+        device_data_raw{nullptr},
+        data_raw_size{this->data.size()} {}
 
   /**
    * @brief Construct an input backed by externally owned host memory.
@@ -198,6 +258,9 @@ struct InputData {
   bool isHostMappable() const { return data_raw != nullptr; }
   /** @return true when the input is backed by a CUDA device allocation. */
   bool isDeviceBacked() const { return device_data_raw != nullptr; }
+
+ private:
+  bool ownsHostBuffer() const noexcept { return data_raw == data.data(); }
 };
 
 /** @brief Shape, datatype, and byte-size metadata for one model tensor. */
@@ -220,7 +283,7 @@ struct InputOutputMetaData {
       : shape{shape},
         datatype{datatype},
         bytesize{accumulate_shape(shape.begin(), shape.end()) *
-                 std::visit([](auto&& arg) { return sizeof(arg); }, getZero(datatype))} {}
+                 std::visit([](auto&& arg) { return static_cast<std::int64_t>(sizeof(arg)); }, getZero(datatype))} {}
 };
 
 }  // namespace triton_cpp
