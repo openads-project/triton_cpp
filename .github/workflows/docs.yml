@@ -25,8 +25,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install Doxygen
-        run: sudo apt-get update && sudo apt-get install -y doxygen
+      - name: Install documentation tools
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
 
       - name: Check out Doxygen Awesome
         uses: actions/checkout@v7
