@@ -47,7 +47,7 @@ jobs:
         run: colcon build --merge-install --base-paths . --cmake-args -DBUILD_TESTING=ON
       - name: Run package tests
         run: |
-          colcon test --event-handlers console_cohesion+
+          colcon test --merge-install --event-handlers console_cohesion+
           colcon test-result --verbose
       - name: Verify installed CMake targets
         run: |
