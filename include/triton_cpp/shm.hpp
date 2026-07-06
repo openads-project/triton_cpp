@@ -22,16 +22,15 @@ class PosixSharedMemory {
   PosixSharedMemory(std::string key, std::int64_t size) : key_{std::move(key)}, size_{size} {
     fd_ = ::shm_open(key_.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     if (fd_ == -1) {
-      throw std::runtime_error(
-          "CreateSharedMemoryRegion: unable to get shared memory descriptor for shared-memory key '" + key_ + "'");
+      throw std::runtime_error("CreateSharedMemoryRegion: unable to get shared memory descriptor for shared-memory key '" + key_ +
+                               "'");
     }
 
     if (::ftruncate(fd_, size_) == -1) {
       closeDescriptor();
       unlinkRegion();
-      throw std::runtime_error(
-          "CreateSharedMemoryRegion: unable to initialize shared-memory key '" + key_ +
-          "' to requested size: " + std::to_string(static_cast<std::size_t>(size_)) + " bytes");
+      throw std::runtime_error("CreateSharedMemoryRegion: unable to initialize shared-memory key '" + key_ +
+                               "' to requested size: " + std::to_string(static_cast<std::size_t>(size_)) + " bytes");
     }
 
     address_ = ::mmap(nullptr, static_cast<std::size_t>(size_), PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
@@ -40,9 +39,8 @@ class PosixSharedMemory {
       const int failed_fd = fd_;
       closeDescriptor();
       unlinkRegion();
-      throw std::runtime_error(
-          "MapSharedMemory: unable to process address space or shared-memory descriptor: " +
-          std::to_string(failed_fd));
+      throw std::runtime_error("MapSharedMemory: unable to process address space or shared-memory descriptor: " +
+                               std::to_string(failed_fd));
     }
 
     const int mapped_fd = fd_;
@@ -50,8 +48,7 @@ class PosixSharedMemory {
       fd_ = -1;
       unmapRegion();
       unlinkRegion();
-      throw std::runtime_error(
-          "CloseSharedMemory: unable to close shared-memory descriptor: " + std::to_string(mapped_fd));
+      throw std::runtime_error("CloseSharedMemory: unable to close shared-memory descriptor: " + std::to_string(mapped_fd));
     }
     fd_ = -1;
   }
@@ -60,8 +57,11 @@ class PosixSharedMemory {
   PosixSharedMemory& operator=(const PosixSharedMemory&) = delete;
 
   PosixSharedMemory(PosixSharedMemory&& other) noexcept
-      : key_{std::move(other.key_)}, address_{std::exchange(other.address_, nullptr)},
-        fd_{std::exchange(other.fd_, -1)}, size_{other.size_}, owns_name_{std::exchange(other.owns_name_, false)} {}
+      : key_{std::move(other.key_)},
+        address_{std::exchange(other.address_, nullptr)},
+        fd_{std::exchange(other.fd_, -1)},
+        size_{other.size_},
+        owns_name_{std::exchange(other.owns_name_, false)} {}
 
   PosixSharedMemory& operator=(PosixSharedMemory&&) = delete;
 
