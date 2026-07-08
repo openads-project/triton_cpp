@@ -1,7 +1,27 @@
 # triton_cpp
 
-This package is a header-only wrapper around the [official Triton C++ client libraries](https://github.com/triton-inference-server/client) for making interaction with a [Triton inference server](https://github.com/triton-inference-server/server) in C++ much easier.
+<p align="center">
+  <a href="https://github.com/openads-project"><img src="https://img.shields.io/badge/OpenADS-f5ff01"/></a>
+  <a href="https://www.ros.org"><img src="https://img.shields.io/badge/ROS 2-jazzy-22314e"/></a>
+  <a href="https://github.com/openads-project/triton_cpp/releases/latest"><img src="https://img.shields.io/github/v/release/openads-project/triton_cpp"/></a>
+  <a href="https://github.com/openads-project/triton_cpp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/openads-project/triton_cpp"/></a>
+  <br>
+  <a href="https://github.com/openads-project/triton_cpp/actions/workflows/ci.yml"><img src="https://github.com/openads-project/triton_cpp/actions/workflows/ci.yml/badge.svg"/></a>
+  <a href="https://openads-project.github.io/triton_cpp"><img src="https://github.com/openads-project/triton_cpp/actions/workflows/docs.yml/badge.svg"/></a>
+</p>
 
+This repository provides a header-only C++ wrapper around the [official Triton C++ client libraries](https://github.com/triton-inference-server/client) for making interaction with a [Triton Inference Server](https://github.com/triton-inference-server/server) easier in ROS 2 and standalone CMake projects.
+
+The wrapper does not host neural networks itself. A [Triton Inference Server](https://github.com/triton-inference-server/server) with a compatible exported model repository must be available at runtime.
+
+<p align="center">
+  <strong>🚀 <a href="#-quick-start">Quick Start</a></strong> • <strong>💻 <a href="#-development">Development</a></strong> • <strong>📝 <a href="#-documentation">Documentation</a></strong>
+</p>
+
+> [!IMPORTANT]
+> This repository is part of [***OpenADS***](https://github.com/openads-project), the *Open Automated Driving Systems* project. *OpenADS* and its modules have been initiated and are currently being maintained by the [**Institute for Automotive Engineering (ika) at RWTH Aachen University**](https://www.ika.rwth-aachen.de/de/).
+
+## 🚀 Quick Start
 
 ### Requirements
 
@@ -52,7 +72,7 @@ find_package(triton_cpp REQUIRED)
 ament_target_dependencies(${TARGET_NAME} triton_cpp)
 ```
 
-### Quick start guide
+### Usage Example
 
 ```c++
 // Include
@@ -103,6 +123,8 @@ std::cout << class_logits(0,0);
 // output will be valid as long as no other inference is called. This means, that multi-threading
 // is currently not supported!
 ```
+
+## 💻 Development
 
 ### Constructor parameters
 
@@ -266,7 +288,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 - `client_timeout_s > 0.0`: failed/blocked inference requests return with an error after the timeout
 - `client_timeout_s < 0.0`: invalid (throws)
 
-### Documentation
+## 📝 Documentation
 
 Implementation details are found in the [Source Code Documentation](https://openads-project.github.io/triton_cpp).
 
