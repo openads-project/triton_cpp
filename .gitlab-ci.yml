@@ -17,13 +17,3 @@ ROS2 Jazzy:
     ROS_DISTRO: jazzy
     IMAGE_AMD64: 'rwthika/ros2-triton:jazzy'
     IMAGE_ARM64: 'rwthika/ros2-triton:jazzy'
-
-# === Downstream ===============================================================
-
-point_cloud_object_detection:
-  stage: Downstream
-  only:
-    - main
-  allow_failure: true
-  trigger:
-    project: fb-fi/its-modules/perception/point_cloud_object_detection
