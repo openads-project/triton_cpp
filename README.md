@@ -10,6 +10,8 @@
   <a href="https://openads-project.github.io/triton_cpp"><img src="https://github.com/openads-project/triton_cpp/actions/workflows/docs.yml/badge.svg"/></a>
 </p>
 
+**Wrapper for Triton C++ Client Libraries**
+
 This repository provides a header-only C++ wrapper around the [official Triton C++ client libraries](https://github.com/triton-inference-server/client) for making interaction with a [Triton Inference Server](https://github.com/triton-inference-server/server) easier in ROS 2 and standalone CMake projects.
 
 The wrapper does not host neural networks itself. A [Triton Inference Server](https://github.com/triton-inference-server/server) with a compatible exported model repository must be available at runtime.
