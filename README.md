@@ -160,7 +160,7 @@ Transport combinations:
 - `shm=true`, `cuda_input_shm=true`: CUDA shared memory for inputs, system shared memory for outputs
 - `variable_input_size=true` cannot be combined with either `shm=true` or `cuda_input_shm=true`
 
-### Use host shared memory {#use-host-shared-memory}
+### Use host shared memory
 
 By default, triton_cpp provides the input and output as a serialized Protobuf stream to the server.
 If the server and client run on the same machine, using shared memory is much more efficient.
@@ -246,7 +246,7 @@ ti->infer();
 in the same integration, depending on whether individual inputs already reside
 on the GPU or originate in host memory.
 
-### Variable input size {#variable-input-size}
+### Variable input size
 
 By default (`variable_input_size = false`) input buffers are allocated once during `initInOutputs()` and reused on every `infer()` call, which is the most efficient mode.
 
@@ -260,7 +260,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
 
 > **Note:** `variable_input_size = true` cannot be combined with `shm = true` or `cuda_input_shm = true`. If you try, the `TritonInterface` constructor throws `std::invalid_argument`.
 
-### Retry connection {#retry-connection}
+### Retry connection
 
 By default (`retry_connection = false`) the constructor throws `std::runtime_error` immediately if it cannot reach the server or fetch the model configuration.
 
@@ -272,7 +272,7 @@ std::unique_ptr<triton_cpp::TritonInterface> ti =
         "PBOD", "1", "127.0.0.1:8001", false, false, true);
 ```
 
-### Inference timeout {#inference-timeout}
+### Inference timeout
 
 `TritonInterface` supports an optional client-side inference timeout via the constructor argument
 `client_timeout_s`:
