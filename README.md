@@ -47,16 +47,14 @@ cmake --build build/triton_cpp
 cmake --install build/triton_cpp --prefix /path/to/prefix
 ```
 
-Installed CMake consumers can use either the original target or the additive
-namespaced target:
+After installation, link your CMake target to the package:
 
 ```cmake
 find_package(triton_cpp 1.1 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE triton_cpp::triton_cpp)
-# Existing `target_link_libraries(my_target PRIVATE triton_cpp)` remains supported.
 ```
 
-The existing subdirectory workflow also remains supported:
+Alternatively, add this repository directly to your CMake project:
 
 ```cmake
 add_subdirectory(triton_cpp)
