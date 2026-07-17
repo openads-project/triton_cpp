@@ -296,6 +296,8 @@ Implementation details are found in the [Source Code Documentation](https://open
 
 The source code in this repository is licensed under Apache-2.0, see [LICENSE](LICENSE). Container images provided by this repository may contain third-party software shipped with their own license terms.
 
+In particular, the NVIDIA Triton C++ client libraries are licensed under the [BSD 3-Clause License](LICENSES/NVIDIA-Triton-Client.txt) ([license source](https://github.com/triton-inference-server/client/blob/main/LICENSE)).
+
 ## 🙏 Acknowledgements
 
 Development and maintenance of this repository are supported by the following projects. We acknowledge the funding of the respective institutions.

@@ -55,6 +55,9 @@ install(TARGETS triton_cpp
 install(FILES LICENSE README.md
   DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}"
 )
+install(FILES LICENSES/NVIDIA-Triton-Client.txt
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/LICENSES"
+)
 
 # === ROS 2 / AMENT ============================================================
 if(ROS_VERSION EQUAL 2)
