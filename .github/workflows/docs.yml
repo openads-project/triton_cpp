@@ -1,53 +1,41 @@
-name: Documentation
+name: docs
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
+  workflow_call:
 
 jobs:
   doxygen:
-    runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    env:
+      DOXYGEN_PROJECT_NAME: ${{ github.event.repository.name }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-      - name: Install documentation tools
-        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
-
-      - name: Check out Doxygen Awesome
-        uses: actions/checkout@v7
+      - name: Disable submodule recursion for subsequent git fetches # Avoids errors due to missing submodule commits.
+        run: git config fetch.recurseSubmodules false
+      - name: Get latest release tag
+        id: get-latest-tag
+        uses: actions-ecosystem/action-get-latest-tag@v1
+        with:
+          semver_only: true
+      - name: Export DOXYGEN_PROJECT_NUMBER
+        run: echo "DOXYGEN_PROJECT_NUMBER=${{ steps.get-latest-tag.outputs.tag }}" >> "$GITHUB_ENV"
+      - name: Checkout doxygen-awesome-css
+        uses: actions/checkout@v4
         with:
           repository: jothepro/doxygen-awesome-css
           ref: v2.4.1
           path: doxygen-awesome-css
-
-      - name: Build documentation
-        env:
-          DOXYGEN_PROJECT_NUMBER: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-        run: doxygen Doxyfile
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload documentation
-        uses: actions/upload-pages-artifact@v5
+      - name: Run Doxygen
+        uses: mattnotmitt/doxygen-action@v1
         with:
-          path: docs/html
-
-      - name: Deploy documentation
-        id: deployment
-        uses: actions/deploy-pages@v5
+          doxyfile-path: Doxyfile
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/html
