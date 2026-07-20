@@ -2,7 +2,7 @@
 <package format="3">
 
   <name>triton_cpp</name>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <description>Header-only wrapper around the NVIDIA Triton C++ API</description>
 
   <maintainer email="bastian.lampe@rwth-aachen.de">Bastian Lampe</maintainer>
